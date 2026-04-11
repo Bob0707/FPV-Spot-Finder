@@ -1,29 +1,8 @@
-import React, { useState } from "react";
 
-export function SidebarSection({ icon, title, children, defaultOpen = false, badge }) {
-  const storageKey = `fpv-section-${title}`;
-  const [open, setOpen] = useState(() => {
-    try {
-      const v = localStorage.getItem(storageKey);
-      return v !== null ? v === "true" : defaultOpen;
-    } catch {
-      return defaultOpen;
-    }
-  });
-
-  const toggle = () => {
-    setOpen((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(storageKey, String(next));
-      } catch {}
-      return next;
-    });
-  };
-
+export function SidebarSection({ icon, title, children, open, onToggle, badge }) {
   return (
     <div className="sidebar-section">
-      <button className="section-header" onClick={toggle}>
+      <button className="section-header" onClick={onToggle}>
         <span className="section-icon">{icon}</span>
         <span className="section-title">{title}</span>
         {badge && <span className="section-badge">{badge}</span>}

@@ -102,6 +102,9 @@ function FPVSpotFinder() {
   const [overlayOpacity, setOverlayOpacity] = useState({});
   const [toast, setToast] = useState(null);
   const [searchCircle, setSearchCircle] = useState(null);
+  const [openSection, setOpenSection] = useState("Spot suchen");
+  const sec = (title) => ({ open: openSection === title, onToggle: () => setOpenSection((s) => s === title ? null : title) });
+
   const [coords, setCoords] = useState(null);
   const [spots, setSpots] = useState([]);
   const [activeSpotTypes, setActiveSpotTypes] = useState([...ALL_SPOT_TYPE_IDS]);
@@ -521,7 +524,7 @@ function FPVSpotFinder() {
           )}
           <aside className={`app-sidebar ${sidebarOpen ? "" : "closed"}`}>
             <div className="sidebar-scroll">
-              <SidebarSection icon={<IconSearch />} title="Spot suchen" defaultOpen={true} badge={searchCircle ? "Aktiv" : undefined}>
+              <SidebarSection icon={<IconSearch />} title="Spot suchen" {...sec("Spot suchen")} badge={searchCircle ? "Aktiv" : undefined}>
                 <SearchPanel
                   onSearch={handleSearch}
                   onClear={handleClear}
@@ -531,7 +534,7 @@ function FPVSpotFinder() {
                 />
               </SidebarSection>
 
-              <SidebarSection icon={<IconLayers />} title="Karten-Layer" defaultOpen={false} badge={overlayCount > 0 ? `${overlayCount} aktiv` : undefined}>
+              <SidebarSection icon={<IconLayers />} title="Karten-Layer" {...sec("Karten-Layer")} badge={overlayCount > 0 ? `${overlayCount} aktiv` : undefined}>
                 <LayerPanel
                   activeBase={activeBase}
                   setActiveBase={setActiveBase}
@@ -543,7 +546,7 @@ function FPVSpotFinder() {
                 />
               </SidebarSection>
 
-              <SidebarSection icon={<IconFilter />} title="Spot-Filter" defaultOpen={true} badge={spotBadge}>
+              <SidebarSection icon={<IconFilter />} title="Spot-Filter" {...sec("Spot-Filter")} badge={spotBadge}>
                 <SpotFilterPanel
                   spots={spots}
                   activeSpotTypes={activeSpotTypes}
@@ -563,7 +566,7 @@ function FPVSpotFinder() {
                 />
               </SidebarSection>
 
-              <SidebarSection icon={<IconShield />} title="Luftraum" defaultOpen={false} badge={airspaceBadge}>
+              <SidebarSection icon={<IconShield />} title="Luftraum" {...sec("Luftraum")} badge={airspaceBadge}>
                 <AirspacePanel
                   apiKey={airspaceKey}
                   onSaveKey={handleSaveApiKey}
@@ -586,6 +589,7 @@ function FPVSpotFinder() {
               <SidebarSection
                 icon={<IconTarget />}
                 title="Fly-or-No-Fly Check"
+                {...sec("Fly-or-No-Fly Check")}
                 badge={
                   flyCheckResult
                     ? flyCheckResult.verdict === "green"
@@ -604,7 +608,7 @@ function FPVSpotFinder() {
                 />
               </SidebarSection>
 
-              <SidebarSection icon={<IconCloud />} title="Wetter" badge={weatherBadge}>
+              <SidebarSection icon={<IconCloud />} title="Wetter" {...sec("Wetter")} badge={weatherBadge}>
                 <WeatherPanel
                   selectedSpot={selectedSpot}
                   weatherData={weatherData}
@@ -614,7 +618,7 @@ function FPVSpotFinder() {
                 />
               </SidebarSection>
 
-              <SidebarSection icon={<IconSun />} title="Sonnenstand" badge={sunBadge}>
+              <SidebarSection icon={<IconSun />} title="Sonnenstand" {...sec("Sonnenstand")} badge={sunBadge}>
                 <SunPanel selectedSpot={selectedSpot} searchCircle={searchCircle} />
               </SidebarSection>
             </div>
