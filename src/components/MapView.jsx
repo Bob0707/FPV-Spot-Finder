@@ -254,7 +254,13 @@ export function MapView({
 
       SPOT_TYPES.forEach((st) => {
         map.on("click", `spots-${st.id}`, (e) => {
-          if (e.features?.length > 0) onSpotClick?.(e.features[0]);
+          if (e.features?.length > 0) {
+            const f = e.features[0];
+            const feature = f.geometry?.coordinates
+              ? f
+              : { ...f, geometry: { type: "Point", coordinates: [e.lngLat.lng, e.lngLat.lat] } };
+            onSpotClick?.(feature);
+          }
         });
         map.on("mouseenter", `spots-${st.id}`, () => { map.getCanvas().style.cursor = "pointer"; });
         map.on("mouseleave", `spots-${st.id}`, () => { map.getCanvas().style.cursor = ""; });

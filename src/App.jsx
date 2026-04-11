@@ -368,10 +368,11 @@ function FPVSpotFinder() {
     const props = { ...f.properties };
     if (typeof props.tags === "string") try { props.tags = JSON.parse(props.tags); } catch {}
     if (typeof props.fpvBreakdown === "string") try { props.fpvBreakdown = JSON.parse(props.fpvBreakdown); } catch {}
-    const parsed = { ...f, properties: props };
+    // Explicitly include geometry — spread may not copy it if MapLibre wraps it as non-enumerable
+    const parsed = { type: "Feature", geometry: f.geometry, properties: props };
     setSelectedSpot(parsed);
     setSelectedZone(null);
-    if (mapRef.current) {
+    if (mapRef.current && f.geometry?.coordinates) {
       const z = Math.max(14, mapRef.current.getZoom());
       mapRef.current.flyTo({ center: f.geometry.coordinates, zoom: z, speed: 1.2, essential: true });
     }
