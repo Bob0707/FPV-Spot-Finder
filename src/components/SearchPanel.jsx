@@ -89,7 +89,9 @@ export function SearchPanel({ onSearch, onClear, hasResult, currentQuery, onToas
 
   const sugLabel = (sug) => {
     const p = sug.display_name.split(",");
-    return { main: p.slice(0, 2).join(",").trim(), rest: p.slice(2, 4).join(",").trim() };
+    const plz = sug.address?.postcode || "";
+    const mainText = p.slice(0, 2).join(",").trim();
+    return { main: plz ? `${plz} ${mainText}` : mainText, rest: p.slice(2, 4).join(",").trim() };
   };
 
   const typeIcon = (t) =>
@@ -160,7 +162,7 @@ export function SearchPanel({ onSearch, onClear, hasResult, currentQuery, onToas
         <div className="radius-label">
           <span>Suchring</span>
           <span className="radius-value">
-            {radiusMin > 1 ? (
+            {radiusMin > 0 ? (
               <>
                 <span className="rv-dim">{radiusMin} km</span>
                 <span className="rv-sep"> – </span>
@@ -170,22 +172,22 @@ export function SearchPanel({ onSearch, onClear, hasResult, currentQuery, onToas
           </span>
         </div>
         <DualRangeSlider
-          min={1}
+          min={0}
           max={50}
           valueMin={radiusMin}
           valueMax={radiusMax}
           onChange={handleRangeChange}
         />
         <div className="radius-range-labels">
-          <span>1 km</span>
+          <span>0 km</span>
           <span>50 km</span>
         </div>
         <div className="radius-presets">
           {[
-            { label: "1–5", min: 1, max: 5 },
+            { label: "0–5", min: 0, max: 5 },
             { label: "5–15", min: 5, max: 15 },
-            { label: "10–25", min: 10, max: 25 },
-            { label: "0–50", min: 1, max: 50 },
+            { label: "15–30", min: 15, max: 30 },
+            { label: "30–50", min: 30, max: 50 },
           ].map((p) => (
             <button
               key={p.label}

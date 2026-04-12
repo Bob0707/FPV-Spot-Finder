@@ -2,7 +2,7 @@
 
 export const clampRadius = (v, fb) => {
   const n = parseInt(v, 10);
-  return !isNaN(n) ? Math.min(50, Math.max(1, n)) : fb;
+  return !isNaN(n) ? Math.min(50, Math.max(0, n)) : fb;
 };
 
 export function readUrlParams() {
@@ -13,7 +13,7 @@ export function readUrlParams() {
   return {
     center: !isNaN(lat) && !isNaN(lng) ? [lng, lat] : null,
     zoom: !isNaN(zoom) ? zoom : null,
-    radiusMin: clampRadius(p.get("rMin"), 1),
+    radiusMin: clampRadius(p.get("rMin"), 0),
     radiusMax: clampRadius(p.get("rMax"), 15),
     query: p.get("q") || "",
   };
