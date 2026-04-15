@@ -1,10 +1,10 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { NOMINATIM } from "../lib/constants.js";
+import { NOMINATIM, SPOT_TYPES, ALL_SPOT_TYPE_IDS } from "../lib/constants.js";
 import { readUrlParams, writeUrlParams, zoomForRadius } from "../lib/helpers.js";
 import { IconSearch, IconSpinner, IconClose2, IconPin, IconShare } from "./Icons.jsx";
 import { DualRangeSlider } from "./DualRangeSlider.jsx";
 
-export function SearchPanel({ onSearch, onClear, hasResult, currentQuery, onToast }) {
+export function SearchPanel({ onSearch, onClear, hasResult, currentQuery, onToast, queryTypes, onQueryTypesChange }) {
   const [query, setQuery] = useState(currentQuery || "");
   const [suggestions, setSugs] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -197,6 +197,39 @@ export function SearchPanel({ onSearch, onClear, hasResult, currentQuery, onToas
               {p.label}
             </button>
           ))}
+        </div>
+      </div>
+
+      <div className="query-types-block">
+        <div className="query-types-header">
+          <span className="query-types-title">Kategorien</span>
+          <span className="query-types-hint">
+            {queryTypes.length === ALL_SPOT_TYPE_IDS.length
+              ? "Alle"
+              : `${queryTypes.length} / ${ALL_SPOT_TYPE_IDS.length}`}
+          </span>
+        </div>
+        <div className="query-type-chips">
+          {SPOT_TYPES.map((st) => {
+            const active = queryTypes.includes(st.id);
+            return (
+              <button
+                key={st.id}
+                className={`qt-chip ${active ? "active" : ""}`}
+                style={{ "--qt-color": st.color }}
+                onClick={() =>
+                  onQueryTypesChange((prev) =>
+                    prev.includes(st.id) ? prev.filter((x) => x !== st.id) : [...prev, st.id]
+                  )
+                }
+                title={st.shortDesc}
+              >
+                <span className="qt-icon">{st.icon}</span>
+                <span className="qt-label">{st.name}</span>
+                {!active && <span className="qt-off">–</span>}
+              </button>
+            );
+          })}
         </div>
       </div>
 

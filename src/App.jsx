@@ -114,7 +114,6 @@ function FPVSpotFinder() {
   const [scoreMin, setScoreMin] = useState(0);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [queryTypes, setQueryTypes] = useState([...ALL_SPOT_TYPE_IDS]);
-  const [lastFetchedTypes, setLastFetchedTypes] = useState(null);
 
   // Phase 7
   const [airspaceKey, setAirspaceKey] = useState(() => localStorage.getItem("fpv-openaip-key") || "");
@@ -321,7 +320,6 @@ function FPVSpotFinder() {
       fetchSpots(circle.center, circle.radiusMinKm, circle.radiusMaxKm, fetchTypes, ctrl.signal)
         .then(({ features, rawCount, remark, turboUrl }) => {
           setSpots(features);
-          setLastFetchedTypes([...fetchTypes]);
           setDebugInfo({ rawCount, classified: features.length, remark, turboUrl });
           if (rawCount === 0) {
             showToast("Overpass: 0 Elemente – Turbo-Link im Filter-Panel prüfen.", "warn");
@@ -531,6 +529,8 @@ function FPVSpotFinder() {
                   hasResult={!!searchCircle}
                   currentQuery={urlParams.query}
                   onToast={showToast}
+                  queryTypes={queryTypes}
+                  onQueryTypesChange={setQueryTypes}
                 />
               </SidebarSection>
 
@@ -559,10 +559,6 @@ function FPVSpotFinder() {
                   onScoreMinChange={setScoreMin}
                   showHeatmap={showHeatmap}
                   onHeatmapToggle={() => setShowHeatmap((v) => !v)}
-                  queryTypes={queryTypes}
-                  onQueryTypesChange={setQueryTypes}
-                  lastFetchedTypes={lastFetchedTypes}
-                  onRefetchWithTypes={(types) => doFetchSpots(searchCircle, types)}
                 />
               </SidebarSection>
 

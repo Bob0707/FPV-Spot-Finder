@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { SPOT_TYPES, ALL_SPOT_TYPE_IDS } from "../lib/constants.js";
+import { SPOT_TYPES } from "../lib/constants.js";
 import { getScoreColor } from "../lib/scoring.js";
 import { IconHeatmap, IconRefresh, IconExternal } from "./Icons.jsx";
 
@@ -25,22 +25,8 @@ export default function SpotFilterPanel({
   onScoreMinChange,
   showHeatmap,
   onHeatmapToggle,
-  queryTypes,
-  onQueryTypesChange,
-  lastFetchedTypes,
-  onRefetchWithTypes,
 }) {
   const [showDebug, setShowDebug] = useState(false);
-
-  const queryDirty = useMemo(() => {
-    if (!lastFetchedTypes) return false;
-    return [...queryTypes].sort().join(",") !== [...lastFetchedTypes].sort().join(",");
-  }, [queryTypes, lastFetchedTypes]);
-
-  const toggleQT = (id) =>
-    onQueryTypesChange((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
 
   const typeStats = useMemo(() => {
     const s = {};
@@ -88,51 +74,6 @@ export default function SpotFilterPanel({
 
   return (
     <div className="spot-filter-panel">
-      {/* API query types */}
-      <div className="query-types-block">
-        <div className="query-types-header">
-          <span className="query-types-title">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>{" "}
-            API-Abfrage
-          </span>
-          <span className="query-types-hint">
-            {queryTypes.length === ALL_SPOT_TYPE_IDS.length
-              ? "Alle Kategorien"
-              : `${queryTypes.length} von ${ALL_SPOT_TYPE_IDS.length}`}
-          </span>
-        </div>
-        <div className="query-type-chips">
-          {SPOT_TYPES.map((st) => {
-            const active = queryTypes.includes(st.id);
-            return (
-              <button
-                key={st.id}
-                className={`qt-chip ${active ? "active" : ""}`}
-                style={{ "--qt-color": st.color }}
-                onClick={() => toggleQT(st.id)}
-                disabled={loading}
-                title={st.shortDesc}
-              >
-                <span className="qt-icon">{st.icon}</span>
-                <span className="qt-label">{st.name}</span>
-                {!active && <span className="qt-off">–</span>}
-              </button>
-            );
-          })}
-        </div>
-        {queryDirty && !loading && (
-          <button className="query-reload-banner" onClick={() => onRefetchWithTypes(queryTypes)}>
-            <IconRefresh />
-            <span>Kategorien geändert — neu laden</span>
-          </button>
-        )}
-        {!lastFetchedTypes && !loading && hasSearch && (
-          <div className="query-types-note">Wird beim nächsten Fetch berücksichtigt</div>
-        )}
-      </div>
-
       {/* Summary row */}
       <div className="spots-summary">
         {loading ? (
@@ -171,13 +112,7 @@ export default function SpotFilterPanel({
           <span className="spots-empty-icon">🔎</span>
           <span className="spots-empty-title">Keine Spots im Suchbereich</span>
           <div className="spots-empty-hints">
-            <span>
-              💡 Suchradius vergrößern (aktuell max.{" "}
-              {queryTypes.length < ALL_SPOT_TYPE_IDS.length
-                ? "oder mehr Kategorien aktivieren"
-                : "alle Kategorien aktiv"}
-              )
-            </span>
+            <span>💡 Suchradius vergrößern oder mehr Kategorien in der Suche aktivieren</span>
             <span>💡 Anderen Standort suchen</span>
             <span>💡 Ländliche Gebiete haben oft mehr Spots</span>
           </div>
