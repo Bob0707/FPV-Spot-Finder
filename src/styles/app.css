@@ -138,7 +138,7 @@
   .score-filter-title{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--text-secondary)}
   .score-filter-title svg{color:var(--accent)}.score-filter-value{font-family:var(--font-mono);font-size:13px;font-weight:700}
   .score-ramp{position:relative;height:20px;display:flex;align-items:center}
-  .score-ramp-bar{position:absolute;left:0;right:0;height:6px;border-radius:3px;background:linear-gradient(90deg,#60a5fa,#22d3a7 45%,#f59e0b 65%,#ef4444);pointer-events:none}
+  .score-ramp-bar{position:absolute;left:0;right:0;height:6px;top:50%;transform:translateY(-50%);border-radius:3px;background:linear-gradient(90deg,#60a5fa,#22d3a7 45%,#f59e0b 65%,#ef4444);pointer-events:none}
   .score-slider{position:relative;width:100%;appearance:none;height:20px;background:transparent;outline:none;cursor:pointer;margin:0;z-index:1}
   .score-slider::-webkit-slider-thumb{appearance:none;width:16px;height:16px;border-radius:50%;background:white;cursor:pointer;box-shadow:0 0 0 2px rgba(0,0,0,.35),0 1px 4px rgba(0,0,0,.4);transition:transform .15s}
   .score-slider::-webkit-slider-runnable-track{height:6px;background:transparent;border-radius:3px}
