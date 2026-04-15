@@ -127,36 +127,36 @@ export function SearchPanel({ onSearch, onClear, hasResult, currentQuery, onToas
             <IconClose2 />
           </button>
         )}
-      </div>
 
-      {open && suggestions.length > 0 && (
-        <div className="suggestions-list" id="search-suggestions" role="listbox" aria-label="Ortsvorschläge">
-          {suggestions.map((sug, i) => {
-            const { main, rest } = sugLabel(sug);
-            return (
-              <button
-                key={sug.place_id}
-                id={`sug-${i}`}
-                role="option"
-                aria-selected={i === activeIdx}
-                className={`suggestion-item ${i === activeIdx ? "active" : ""}`}
-                onClick={() => handleSelect(sug)}
-                onMouseEnter={() => setActiveIdx(i)}
-              >
-                <span className="sug-icon">{typeIcon(sug.type || sug.class)}</span>
-                <span className="sug-text">
-                  <span className="sug-main">{main}</span>
-                  {rest && <span className="sug-rest">{rest}</span>}
-                </span>
-                <span className="sug-type">{sug.type || sug.class}</span>
-              </button>
-            );
-          })}
-          <div className="suggestions-footer">
-            <span>© OpenStreetMap Nominatim · DACH</span>
+        {open && suggestions.length > 0 && (
+          <div className="suggestions-list" id="search-suggestions" role="listbox" aria-label="Ortsvorschläge">
+            {suggestions.map((sug, i) => {
+              const { main, rest } = sugLabel(sug);
+              return (
+                <button
+                  key={sug.place_id}
+                  id={`sug-${i}`}
+                  role="option"
+                  aria-selected={i === activeIdx}
+                  className={`suggestion-item ${i === activeIdx ? "active" : ""}`}
+                  onClick={() => handleSelect(sug)}
+                  onMouseEnter={() => setActiveIdx(i)}
+                >
+                  <span className="sug-icon">{typeIcon(sug.type || sug.class)}</span>
+                  <span className="sug-text">
+                    <span className="sug-main">{main}</span>
+                    {rest && <span className="sug-rest">{rest}</span>}
+                  </span>
+                  <span className="sug-type">{sug.type || sug.class}</span>
+                </button>
+              );
+            })}
+            <div className="suggestions-footer">
+              <span>© OpenStreetMap Nominatim · DACH</span>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="radius-control">
         <div className="radius-label">
