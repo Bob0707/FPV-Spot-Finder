@@ -297,6 +297,97 @@
   @keyframes toastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
   .pulse-drone{color:var(--accent);animation:pulse 1.5s ease-in-out infinite}
   @keyframes pulse{0%,100%{opacity:.4;transform:scale(.95)}50%{opacity:1;transform:scale(1.05)}}
+
+  /* ─────────────────────────────────────────────────────────────────
+     RESPONSIVE IMPROVEMENTS
+     ───────────────────────────────────────────────────────────────── */
+
+  /* ── Tablet (768px – 1023px) ──────────────────────────────────── */
+  @media(min-width:768px) and (max-width:1023px) {
+    :root { --sidebar-width: 300px; }
+    .header-coords { display: none; }
+    .brand-text { font-size: 16px; }
+    .header-layer-status { font-size: 10px; }
+  }
+
+  /* ── Mobile additions (≤767px) ────────────────────────────────── */
+  /* These rules extend the existing @media(max-width:767px) block above */
+  @media(max-width:767px) {
+    /* Remove 300 ms tap delay and iOS tap flash on all interactive elements */
+    button, a, [role="button"] {
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+
+    /* Prevent iOS Safari auto-zoom on input focus (needs font-size ≥ 16px) */
+    .search-input { font-size: 16px; }
+    .airspace-key-input { font-size: 16px; }
+
+    /* Header: tighten layout for narrow viewports */
+    .app-header {
+      padding: 0 10px;
+      gap: 8px;
+      /* Account for notch / status-bar on iOS (viewport-fit=cover) */
+      padding-top: env(safe-area-inset-top, 0px);
+      height: calc(var(--header-height) + env(safe-area-inset-top, 0px));
+    }
+    .brand-tag { display: none; }
+    .brand-text { font-size: 16px; }
+    /* Allow layer-status to shrink so it never overflows the header */
+    .header-layer-status { flex-shrink: 1; min-width: 0; overflow: hidden; }
+
+    /* ── Touch targets: minimum ~44 × 44 px ── */
+    /* Sidebar toggle */
+    .header-toggle { min-width: 44px; min-height: 44px; padding: 10px; }
+
+    /* Section accordion headers */
+    .section-header { min-height: 44px; }
+
+    /* Close / clear / action icon-buttons */
+    .sdp-close, .zdp-close { padding: 10px; }
+    .search-clear { padding: 8px; min-height: 36px; }
+    .result-share, .result-clear { padding: 8px; min-height: 36px; }
+    .spots-refresh-btn, .az-reload-btn { padding: 8px; }
+
+    /* ── Toggle switches: larger for thumb taps ── */
+    .overlay-toggle { width: 44px; height: 26px; border-radius: 13px; }
+    .overlay-toggle::after { top: 4px; left: 4px; width: 18px; height: 18px; }
+    .overlay-toggle.active::after { transform: translateX(18px); }
+
+    /* ── Range slider: bigger thumb for touch ── */
+    .drs-thumb { width: 24px; height: 24px; }
+    .drs-track { height: 32px; }
+
+    /* ── Spot-detail bottom sheet: taller so more content is visible ── */
+    .spot-detail-panel { max-height: 65vh; }
+
+    /* Safe area inset for bottom sheet (iPhone home bar) */
+    .spot-detail-panel { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+    /* ── Toast: move to top so it never covers the bottom sheet ── */
+    .toast-container {
+      bottom: auto;
+      top: calc(var(--header-height) + env(safe-area-inset-top, 0px) + 8px);
+    }
+
+    /* Momentum scrolling on sidebar */
+    .sidebar-scroll { -webkit-overflow-scrolling: touch; }
+  }
+
+  /* ── Very small screens (≤380px) ─────────────────────────────── */
+  @media(max-width:380px) {
+    .brand-text { font-size: 15px; }
+    /* Drop status bar entirely if there is no room */
+    .header-layer-status { display: none; }
+    .app-header { padding: 0 8px; gap: 6px; }
+  }
+
+  /* ── Large desktop (≥1440px) ──────────────────────────────────── */
+  @media(min-width:1440px) {
+    :root { --sidebar-width: 380px; }
+    .spot-detail-panel { width: 320px; }
+    .zone-detail-panel { width: 300px; }
+  }
   .spinner-icon{animation:spin .8s linear infinite}@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
   .maplibregl-ctrl-group{background:var(--bg-card)!important;border:1px solid var(--border)!important;border-radius:var(--radius-sm)!important;box-shadow:0 2px 8px rgba(0,0,0,.3)!important}
   .maplibregl-ctrl-group button{border-color:var(--border)!important}.maplibregl-ctrl-group button span{filter:invert(.8)!important}
