@@ -157,8 +157,14 @@ function FPVSpotFinder() {
   useEffect(() => {
     const check = () => {
       const m = window.innerWidth < 768;
-      setIsMobile(m);
-      if (m) setSidebarOpen(false);
+      // Use functional updater so we can compare against the previous value.
+      // Only close the sidebar when *transitioning* from desktop → mobile
+      // (e.g. on initial load or screen rotation), NOT on every resize event
+      // that happens while already on mobile (e.g. virtual keyboard opening).
+      setIsMobile((prev) => {
+        if (m && !prev) setSidebarOpen(false);
+        return m;
+      });
     };
     check();
     window.addEventListener("resize", check);
