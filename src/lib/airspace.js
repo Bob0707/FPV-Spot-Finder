@@ -33,7 +33,7 @@ export async function fetchOpenAIPData(center, radiusKm, apiKey) {
 
   const fetchPage = async (page) => {
     const res = await fetch(
-      `/api/openaip/airspaces?bbox=${bbox}&page=${page}&limit=100`,
+      `https://api.core.openaip.net/api/airspaces?bbox=${bbox}&page=${page}&limit=100`,
       { headers: { "x-openaip-api-key": apiKey, Accept: "application/json" } }
     );
     if (res.status === 401 || res.status === 403) {

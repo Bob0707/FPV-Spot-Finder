@@ -4,10 +4,10 @@ export const DACH_CENTER = [10.5, 47.5];
 export const DACH_ZOOM = 5.5;
 export const NOMINATIM = "https://nominatim.openstreetmap.org/search";
 export const OVERPASS_ENDPOINTS = [
-  "/api/overpass-lz4",
-  "/api/overpass-z",
-  "/api/overpass-fr",
-  "/api/overpass-pc",
+  "https://lz4.overpass-api.de/api/interpreter",
+  "https://z.overpass-api.de/api/interpreter",
+  "https://overpass.openstreetmap.fr/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
 ];
 
 export const BASE_LAYERS = [
