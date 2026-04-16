@@ -5,7 +5,7 @@ import "./styles/app.css";
 // ── Lib ────────────────────────────────────────────────────────────────────
 import { ALL_SPOT_TYPE_IDS } from "./lib/constants.js";
 import { getScoreColor } from "./lib/scoring.js";
-import { fetchSpots } from "./lib/overpass.js";
+import { fetchSpots, fetchBuildingClusters, applyBuildingScores } from "./lib/overpass.js";
 import { fetchOpenAIPData, fetchNaturschutzData } from "./lib/airspace.js";
 import { fetchWeather, computeWeatherAmpel } from "./lib/weather.js";
 import { getSunTimes, getSunStatus, formatTime } from "./lib/suncalc.js";
@@ -325,11 +325,15 @@ function FPVSpotFinder() {
       setLoadingSpots(true);
       setSelectedSpot(null);
       setDebugInfo(null);
+      setBuildingClusters([]);
+
+      // ── Phase 1: spot queries only (fast) ─────────────────────────────
       fetchSpots(circle.center, circle.radiusMinKm, circle.radiusMaxKm, fetchTypes, ctrl.signal)
-        .then(({ features, rawCount, buildingCount, clusters, remark, turboUrl }) => {
+        .then(({ features, rawCount, remark, turboUrl }) => {
           setSpots(features);
-          setBuildingClusters(clusters ?? []);
-          setDebugInfo({ rawCount, classified: features.length, buildingCount, remark, turboUrl });
+          setDebugInfo({ rawCount, classified: features.length, buildingCount: null, remark, turboUrl });
+          setLoadingSpots(false);
+
           if (rawCount === 0) {
             showToast("Overpass: 0 Elemente – Turbo-Link im Filter-Panel prüfen.", "warn");
           } else if (features.length === 0) {
@@ -340,14 +344,26 @@ function FPVSpotFinder() {
             );
             showToast(`${features.length} Spots · Ø Score ${avg}`, "success");
           }
+
+          // ── Phase 2: building clusters (slow, non-blocking) ───────────
+          fetchBuildingClusters(
+            circle.center, circle.radiusMinKm, circle.radiusMaxKm, ctrl.signal
+          ).then(({ buildingCount, clusters }) => {
+            if (ctrl.signal.aborted) return;
+            setBuildingClusters(clusters);
+            setDebugInfo((prev) => prev ? { ...prev, buildingCount } : null);
+            if (clusters.length > 0) {
+              setSpots(applyBuildingScores(features, clusters));
+            }
+          }).catch(() => {}); // building failure is silent — spots already shown
         })
         .catch((err) => {
           if (err.name !== "AbortError") {
             showToast(`Fehler: ${err.message}`, "warn");
             setDebugInfo({ rawCount: 0, classified: 0, remark: err.message, turboUrl: null });
           }
-        })
-        .finally(() => setLoadingSpots(false));
+          setLoadingSpots(false);
+        });
     },
     [queryTypes] // eslint-disable-line react-hooks/exhaustive-deps
   );

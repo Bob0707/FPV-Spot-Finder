@@ -7,10 +7,13 @@ export async function fetchBuildingCentroids(center, radiusKm, signal) {
   const { s, w, n, e } = radiusToBbox(lat, lng, radiusKm);
   const bbox = `${s},${w},${n},${e}`;
 
+  // Only ways: they carry the actual building footprints.
+  // Nodes with building=* are mostly entrances/addresses; relations are rare.
+  // `out center qt` (quad-tile sort) is faster to process server-side.
   const query =
-    `[out:json][timeout:60][bbox:${bbox}];` +
-    `(node["building"];way["building"];relation["building"];);` +
-    `out center;`;
+    `[out:json][timeout:25][bbox:${bbox}];` +
+    `way["building"];` +
+    `out center qt;`;
 
   console.log(`[buildings] Querying buildings in ${radiusKm}km radius around ${lat.toFixed(4)},${lng.toFixed(4)}`);
 

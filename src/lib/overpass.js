@@ -188,13 +188,10 @@ function blendFpvScore(osmScore, buildingScore, clcScore) {
       osmScore * 0.4 + buildingScore * 0.4 + clcScore * 0.2,
     )));
   }
-  // CLC not yet available: redistribute its 20% equally
-  return Math.min(100, Math.max(0, Math.round(
-    osmScore * 0.5 + buildingScore * 0.5,
-  )));
+  return Math.min(100, Math.max(0, Math.round(osmScore * 0.5 + buildingScore * 0.5)));
 }
 
-// ── Main fetch function ────────────────────────────────────────────────────
+// ── Main fetch function (spots only — fast path) ───────────────────────────
 export async function fetchSpots(center, radiusMinKm, radiusMaxKm, queryTypes, signal) {
   const [lng, lat] = center;
   const typeKey = [...queryTypes].sort().join(",");
@@ -205,17 +202,9 @@ export async function fetchSpots(center, radiusMinKm, radiusMaxKm, queryTypes, s
   const { A: qA, B: qB } = buildQueries(lat, lng, radiusMaxKm, queryTypes);
   const turboUrl = buildTurboUrl(lat, lng, radiusMaxKm, queryTypes);
 
-  // Run spot queries and building centroid fetch in parallel.
-  // Building fetch is optional — a failure must not block spot results.
-  const [resultA, resultB, buildingSettled] = await Promise.all([
+  const [resultA, resultB] = await Promise.all([
     raceEndpoints(qA, signal),
     qB ? raceEndpoints(qB, signal) : Promise.resolve({ elements: [] }),
-    fetchBuildingCentroids(center, radiusMaxKm, signal)
-      .then((pts) => ({ ok: true, value: pts }))
-      .catch((err) => {
-        console.warn("[buildings] fetch failed, buildingScore will be null:", err.message);
-        return { ok: false };
-      }),
   ]);
 
   const all = [...(resultA.elements || []), ...(resultB.elements || [])];
@@ -223,18 +212,6 @@ export async function fetchSpots(center, radiusMinKm, radiusMaxKm, queryTypes, s
   const spotEls = all.filter((el) => !(el.type === "node" && el.tags?.place));
   const rawCount = spotEls.length;
 
-  // ── Filter building points to search donut, then cluster ─────────────
-  // The Overpass bbox over-fetches (square, not circle) so we clip to the
-  // actual circle and also exclude the inner hole (radiusMinKm).
-  const rawBuildingPoints = buildingSettled.ok ? buildingSettled.value : [];
-  const buildingPoints = rawBuildingPoints.filter((p) => {
-    const d = haversineKm(lat, lng, p.lat, p.lng);
-    return d <= radiusMaxKm && d >= radiusMinKm;
-  });
-  const buildingCount = buildingPoints.length;
-  const clusters = buildingCount > 0 ? clusterBuildings(buildingPoints) : [];
-
-  // ── Classify and collect spot features ───────────────────────────────
   const features = [];
   const typeCounters = {};
   SPOT_TYPES.forEach((st) => (typeCounters[st.id] = 0));
@@ -254,8 +231,7 @@ export async function fetchSpots(center, radiusMinKm, radiusMaxKm, queryTypes, s
 
     typeCounters[spotType]++;
     const score = computeRemoteness(el.tags, spotType, placeNodes, coordinates);
-    const tmpFeat = { properties: { score, spotType, tags: el.tags } };
-    const fpvResult = computeFpvScore(tmpFeat);
+    const fpvResult = computeFpvScore({ properties: { score, spotType, tags: el.tags } });
 
     features.push({
       type: "Feature",
@@ -265,32 +241,63 @@ export async function fetchSpots(center, radiusMinKm, radiusMaxKm, queryTypes, s
         osmType: el.type,
         spotType,
         score,
-        fpvScore: fpvResult.total,   // overwritten below if buildings available
+        fpvScore: fpvResult.total,
         fpvBreakdown: fpvResult,
-        buildingScore: null,          // populated below
+        buildingScore: null,
         name: el.tags?.name || el.tags?.["name:de"] || null,
         tags: el.tags,
       },
     });
   }
 
-  // ── Apply building distance scores in batch ───────────────────────────
-  if (clusters.length > 0) {
-    const spotCoords = features.map((f) => ({
-      lat: f.geometry.coordinates[1],
-      lng: f.geometry.coordinates[0],
-    }));
-    const bScores = computeBuildingDistanceScoreBatch(spotCoords, clusters);
-    for (let i = 0; i < features.length; i++) {
-      const props = features[i].properties;
-      const bScore = bScores[i];
-      const clcScore = props.clcScore ?? null;
-      props.buildingScore = bScore;
-      props.fpvScore = blendFpvScore(props.fpvBreakdown.total, bScore, clcScore);
-    }
-  }
-
-  const result = { features, rawCount, buildingCount, clusters, remark: null, turboUrl };
+  const result = { features, rawCount, remark: null, turboUrl };
   setCached(cacheKey, result);
   return result;
+}
+
+// ── Building cluster fetch (slow path — call after fetchSpots returns) ─────
+const buildingCache = new Map();
+
+export async function fetchBuildingClusters(center, radiusMinKm, radiusMaxKm, signal) {
+  const [lng, lat] = center;
+  const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)},${radiusMinKm},${radiusMaxKm}`;
+  if (buildingCache.has(cacheKey)) return buildingCache.get(cacheKey);
+
+  const rawPoints = await fetchBuildingCentroids(center, radiusMaxKm, signal);
+
+  // Clip bbox over-fetch to the actual search donut
+  const buildingPoints = rawPoints.filter((p) => {
+    const d = haversineKm(lat, lng, p.lat, p.lng);
+    return d <= radiusMaxKm && d >= radiusMinKm;
+  });
+  const buildingCount = buildingPoints.length;
+  const clusters = buildingCount > 0 ? clusterBuildings(buildingPoints) : [];
+
+  const result = { buildingCount, clusters };
+  if (buildingCache.size >= MAX_CACHE) buildingCache.delete(buildingCache.keys().next().value);
+  buildingCache.set(cacheKey, result);
+  return result;
+}
+
+// ── Apply building scores to an existing features array ───────────────────
+// Returns a new array — does not mutate the originals.
+export function applyBuildingScores(features, clusters) {
+  if (!clusters.length) return features;
+  const spotCoords = features.map((f) => ({
+    lat: f.geometry.coordinates[1],
+    lng: f.geometry.coordinates[0],
+  }));
+  const bScores = computeBuildingDistanceScoreBatch(spotCoords, clusters);
+  return features.map((f, i) => {
+    const p = f.properties;
+    const bScore = bScores[i];
+    return {
+      ...f,
+      properties: {
+        ...p,
+        buildingScore: bScore,
+        fpvScore: blendFpvScore(p.fpvBreakdown.total, bScore, p.clcScore ?? null),
+      },
+    };
+  });
 }
