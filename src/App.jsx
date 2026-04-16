@@ -118,7 +118,9 @@ function FPVSpotFinder() {
   const [queryTypes, setQueryTypes] = useState([...ALL_SPOT_TYPE_IDS]);
 
   // Phase 7
-  const [airspaceKey, setAirspaceKey] = useState(() => localStorage.getItem("fpv-openaip-key") || "");
+  const [airspaceKey, setAirspaceKey] = useState(() => {
+    try { return localStorage.getItem("fpv-openaip-key") || ""; } catch { return ""; }
+  });
   const [airspaceFeatures, setAirspaceFeatures] = useState([]);
   const [naturschutzFeatures, setNaturschutzFeatures] = useState([]);
   const [showAirspace, setShowAirspace] = useState(false);
@@ -304,7 +306,7 @@ function FPVSpotFinder() {
   const handleSaveApiKey = useCallback(
     (key) => {
       setAirspaceKey(key);
-      localStorage.setItem("fpv-openaip-key", key);
+      try { localStorage.setItem("fpv-openaip-key", key); } catch {}
       if (key) {
         showToast("API-Key gespeichert", "success");
         if (showAirspace && searchCircle) setTimeout(() => doFetchAirspace(), 50);

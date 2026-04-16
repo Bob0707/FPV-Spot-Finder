@@ -118,9 +118,9 @@ export function combineSignals(signals) {
 }
 
 // ── Fetch helpers ──────────────────────────────────────────────────────────
-export async function tryFetch(url, query, parentSignal) {
+export async function tryFetch(url, query, parentSignal, timeoutMs = 30000) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 30000);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   const combined = combineSignals([ctrl.signal, parentSignal]);
   try {
     const res = await fetch(url, {
@@ -146,7 +146,7 @@ export async function tryFetch(url, query, parentSignal) {
   } catch (err) {
     if (err.name === "AbortError") {
       if (parentSignal?.aborted) throw err;
-      const e = new Error("Timeout (30s)");
+      const e = new Error(`Timeout (${timeoutMs / 1000}s)`);
       e.retryable = true;
       throw e;
     }
@@ -156,14 +156,14 @@ export async function tryFetch(url, query, parentSignal) {
   }
 }
 
-export async function raceEndpoints(query, parentSignal) {
+export async function raceEndpoints(query, parentSignal, timeoutMs) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     if (parentSignal?.aborted) throw new DOMException("Aborted", "AbortError");
     const ctrls = OVERPASS_ENDPOINTS.map(() => new AbortController());
     const cancel = (i) => ctrls.forEach((c, j) => { if (j !== i) c.abort(); });
     const attempts = OVERPASS_ENDPOINTS.map((ep, i) => {
       const sig = combineSignals([ctrls[i].signal, parentSignal]);
-      return tryFetch(ep, query, sig)
+      return tryFetch(ep, query, sig, timeoutMs)
         .then((data) => { cancel(i); return { data, ep }; })
         .catch((err) => Promise.reject({ err, ep }));
     });

@@ -21,6 +21,9 @@ export function SearchPanel({ onSearch, onClear, hasResult, currentQuery, onToas
     radRef.current = { min: radiusMin, max: radiusMax };
   }, [radiusMin, radiusMax]);
 
+  // Clean up debounce timer on unmount
+  useEffect(() => () => clearTimeout(debRef.current), []);
+
   const fetchSugs = useCallback(async (q) => {
     if (q.trim().length < 2) { setSugs([]); setOpen(false); return; }
     setLoading(true);

@@ -1,7 +1,7 @@
-import React from "react";
 import { WX_AMPEL } from "../lib/constants.js";
 import { getWmo, windDirLabel, computeWeatherAmpel } from "../lib/weather.js";
 import { IconWarning, IconSpinner, IconRefresh } from "./Icons.jsx";
+import { AmpelLight } from "./AmpelLight.jsx";
 
 // ── WindRose (local) ────────────────────────────────────────────────────────
 function WindRose({ direction, speed, size = 100 }) {
@@ -44,25 +44,6 @@ function WindRose({ direction, speed, size = 100 }) {
       <circle cx={ax} cy={ay} r="4" fill={sc} />
       <circle cx={cx} cy={cy} r="2.5" fill="var(--bg-card)" stroke={sc} strokeWidth="1.5" />
     </svg>
-  );
-}
-
-// ── AmpelLight (re-used from FlyCheckPanel logic, inline here) ─────────────
-function AmpelLight({ color, active }) {
-  const cols = { red: "#ef4444", yellow: "#f59e0b", green: "#22c55e" };
-  const c = cols[color];
-  return (
-    <div
-      style={{
-        width: 18,
-        height: 18,
-        borderRadius: "50%",
-        background: active ? c : "transparent",
-        border: `2px solid ${active ? c : c + "44"}`,
-        boxShadow: active ? `0 0 10px ${c}88,0 0 20px ${c}44` : "none",
-        transition: "all .3s",
-      }}
-    />
   );
 }
 

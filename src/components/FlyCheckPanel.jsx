@@ -3,25 +3,7 @@ import { SPOT_TYPES, GENERAL_RULES, VERDICT_CONFIG } from "../lib/constants.js";
 import { getScoreColor } from "../lib/scoring.js";
 import { formatAltLimit } from "../lib/airspace.js";
 import { IconWarning, IconInfo } from "./Icons.jsx";
-
-// ── Local sub-component ────────────────────────────────────────────────────
-function AmpelLight({ color, active }) {
-  const cols = { red: "#ef4444", yellow: "#f59e0b", green: "#22c55e" };
-  const c = cols[color];
-  return (
-    <div
-      style={{
-        width: 18,
-        height: 18,
-        borderRadius: "50%",
-        background: active ? c : "transparent",
-        border: `2px solid ${active ? c : c + "44"}`,
-        boxShadow: active ? `0 0 10px ${c}88,0 0 20px ${c}44` : "none",
-        transition: "all .3s",
-      }}
-    />
-  );
-}
+import { AmpelLight } from "./AmpelLight.jsx";
 
 // ── FlyCheckPanel ──────────────────────────────────────────────────────────
 export default function FlyCheckPanel({
