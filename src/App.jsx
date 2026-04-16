@@ -324,9 +324,9 @@ function FPVSpotFinder() {
       setSelectedSpot(null);
       setDebugInfo(null);
       fetchSpots(circle.center, circle.radiusMinKm, circle.radiusMaxKm, fetchTypes, ctrl.signal)
-        .then(({ features, rawCount, remark, turboUrl }) => {
+        .then(({ features, rawCount, buildingCount, remark, turboUrl }) => {
           setSpots(features);
-          setDebugInfo({ rawCount, classified: features.length, remark, turboUrl });
+          setDebugInfo({ rawCount, classified: features.length, buildingCount, remark, turboUrl });
           if (rawCount === 0) {
             showToast("Overpass: 0 Elemente – Turbo-Link im Filter-Panel prüfen.", "warn");
           } else if (features.length === 0) {

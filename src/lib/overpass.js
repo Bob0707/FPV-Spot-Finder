@@ -1,5 +1,8 @@
 import { OVERPASS_ENDPOINTS, SPOT_TYPES, ALL_SPOT_TYPE_IDS } from "./constants.js";
 import { haversineKm, computeRemoteness, computeFpvScore } from "./scoring.js";
+import { fetchBuildingCentroids } from "./buildings.js";
+import { clusterBuildings } from "./clustering.js";
+import { computeBuildingDistanceScoreBatch } from "./buildingScore.js";
 
 // ── LRU cache: max 50 entries ──────────────────────────────────────────────
 const MAX_CACHE = 50;
@@ -177,6 +180,20 @@ export async function raceEndpoints(query, parentSignal) {
   }
 }
 
+// ── Blend OSM fpvScore with building distance and optional CLC ────────────
+function blendFpvScore(osmScore, buildingScore, clcScore) {
+  if (buildingScore == null) return osmScore;
+  if (clcScore != null) {
+    return Math.min(100, Math.max(0, Math.round(
+      osmScore * 0.4 + buildingScore * 0.4 + clcScore * 0.2,
+    )));
+  }
+  // CLC not yet available: redistribute its 20% equally
+  return Math.min(100, Math.max(0, Math.round(
+    osmScore * 0.5 + buildingScore * 0.5,
+  )));
+}
+
 // ── Main fetch function ────────────────────────────────────────────────────
 export async function fetchSpots(center, radiusMinKm, radiusMaxKm, queryTypes, signal) {
   const [lng, lat] = center;
@@ -188,9 +205,17 @@ export async function fetchSpots(center, radiusMinKm, radiusMaxKm, queryTypes, s
   const { A: qA, B: qB } = buildQueries(lat, lng, radiusMaxKm, queryTypes);
   const turboUrl = buildTurboUrl(lat, lng, radiusMaxKm, queryTypes);
 
-  const [resultA, resultB] = await Promise.all([
+  // Run spot queries and building centroid fetch in parallel.
+  // Building fetch is optional — a failure must not block spot results.
+  const [resultA, resultB, buildingSettled] = await Promise.all([
     raceEndpoints(qA, signal),
     qB ? raceEndpoints(qB, signal) : Promise.resolve({ elements: [] }),
+    fetchBuildingCentroids(center, radiusMaxKm, signal)
+      .then((pts) => ({ ok: true, value: pts }))
+      .catch((err) => {
+        console.warn("[buildings] fetch failed, buildingScore will be null:", err.message);
+        return { ok: false };
+      }),
   ]);
 
   const all = [...(resultA.elements || []), ...(resultB.elements || [])];
@@ -198,6 +223,12 @@ export async function fetchSpots(center, radiusMinKm, radiusMaxKm, queryTypes, s
   const spotEls = all.filter((el) => !(el.type === "node" && el.tags?.place));
   const rawCount = spotEls.length;
 
+  // ── Cluster buildings (if fetch succeeded) ────────────────────────────
+  const buildingPoints = buildingSettled.ok ? buildingSettled.value : [];
+  const buildingCount = buildingPoints.length;
+  const clusters = buildingCount > 0 ? clusterBuildings(buildingPoints) : [];
+
+  // ── Classify and collect spot features ───────────────────────────────
   const features = [];
   const typeCounters = {};
   SPOT_TYPES.forEach((st) => (typeCounters[st.id] = 0));
@@ -228,15 +259,32 @@ export async function fetchSpots(center, radiusMinKm, radiusMaxKm, queryTypes, s
         osmType: el.type,
         spotType,
         score,
-        fpvScore: fpvResult.total,
+        fpvScore: fpvResult.total,   // overwritten below if buildings available
         fpvBreakdown: fpvResult,
+        buildingScore: null,          // populated below
         name: el.tags?.name || el.tags?.["name:de"] || null,
         tags: el.tags,
       },
     });
   }
 
-  const result = { features, rawCount, remark: null, turboUrl };
+  // ── Apply building distance scores in batch ───────────────────────────
+  if (clusters.length > 0) {
+    const spotCoords = features.map((f) => ({
+      lat: f.geometry.coordinates[1],
+      lng: f.geometry.coordinates[0],
+    }));
+    const bScores = computeBuildingDistanceScoreBatch(spotCoords, clusters);
+    for (let i = 0; i < features.length; i++) {
+      const props = features[i].properties;
+      const bScore = bScores[i];
+      const clcScore = props.clcScore ?? null;
+      props.buildingScore = bScore;
+      props.fpvScore = blendFpvScore(props.fpvBreakdown.total, bScore, clcScore);
+    }
+  }
+
+  const result = { features, rawCount, buildingCount, remark: null, turboUrl };
   setCached(cacheKey, result);
   return result;
 }
