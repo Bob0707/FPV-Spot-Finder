@@ -283,10 +283,18 @@ function subsampleGrid(pts, maxPts, initialCellM) {
 }
 
 // ── Build zone hull: alpha shape + Chaikin smooth, fallback to convex hull ─
-const ALPHA_METERS = 100;
+// Alpha must exceed DBSCAN eps: a DBSCAN cluster chains points via shared
+// eps-neighbors, but alpha filters triangles by circumradius — obtuse
+// triangles along a chain exceed eps, so alpha < eps would fragment one
+// cluster into several thin ribbons rendered as overlapping blobs.
+const ALPHA_METERS = 180;
 const SMOOTH_ITERATIONS = 2;
 const MAX_DELAUNAY_PTS = 1200;
 const GRID_CELL_M = ALPHA_METERS / 2;
+// Merge clusters whose bounding circles are within this distance, not just
+// strictly overlapping — smoothed alpha boundaries commonly leave thin gaps
+// between visually-touching clusters that the strict edge test misses.
+const MERGE_BUFFER_METERS = 100;
 
 // Returns an array of rings (lat/lng loops). Each ring is a separate outer
 // boundary — the alpha shape may decompose into multiple disjoint loops for
@@ -392,9 +400,13 @@ function ringsIntersect(ringA, ringB) {
 // alone miss X-shaped crossings where all vertices are outside — which is
 // exactly how elongated alpha-shape ribbons fail to merge.
 function hullsOverlap(c1, c2) {
-  if (haversineDistance(c1.centroid, c2.centroid) > c1.radiusMeters + c2.radiusMeters) {
-    return false;
-  }
+  const centroidDist = haversineDistance(c1.centroid, c2.centroid);
+  const sumRadii = c1.radiusMeters + c2.radiusMeters;
+  if (centroidDist > sumRadii + MERGE_BUFFER_METERS) return false;
+  // Close but bounding circles don't actually overlap — treat as mergeable
+  // without running the edge test. The buffer spans the gap that smoothed
+  // alpha boundaries tend to leave between adjacent clusters.
+  if (centroidDist > sumRadii) return true;
   const hullA = c1.hull, hullB = c2.hull;
   const bboxA = c1.hullBBoxes, bboxB = c2.hullBBoxes;
   for (let i = 0; i < hullA.length; i++) {
