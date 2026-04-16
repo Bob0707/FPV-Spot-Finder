@@ -144,9 +144,21 @@ function convexHullXY(pts) {
   return hull;
 }
 
+// ── Polygon area (signed) for 2D points, CCW positive ────────────────────
+function polygonArea2D(pts) {
+  let a = 0;
+  for (let i = 0, n = pts.length; i < n; i++) {
+    const p = pts[i], q = pts[(i + 1) % n];
+    a += p.x * q.y - q.x * p.y;
+  }
+  return a / 2;
+}
+
 // ── Alpha shape: extract concave boundary from Delaunay triangulation ─────
-// Returns array of {x, y} polygon vertices (largest connected component),
-// or null if no alpha triangles exist.
+// Returns array of {x, y} polygon vertices (largest simple CCW loop), or
+// null if no alpha triangles exist. Uses angular edge pairing at each
+// vertex so pinch points decompose into disjoint simple loops instead of
+// self-intersecting tangles.
 function extractAlphaShape(xy, tris, alphaMeters) {
   const alphaTris = tris.filter(
     t => circumradiusXY(xy[t[0]], xy[t[1]], xy[t[2]]) <= alphaMeters
@@ -161,38 +173,67 @@ function extractAlphaShape(xy, tris, alphaMeters) {
     }
   }
 
-  // Boundary: directed edges whose reverse is absent.
-  // A vertex may have multiple outgoing boundary edges at pinch points, so
-  // store a set per vertex — a single Map<a,b> would silently drop edges.
-  const boundary = new Map(); // a → Set<b>
+  // Boundary = directed edge with no reverse twin. Group outgoing edges by
+  // vertex and sort by angle — needed for the rotational pairing below.
+  const outs = new Map(); // a → array of {to, angle, used}
+  let edgeCount = 0;
   for (const t of alphaTris) {
     for (let e = 0; e < 3; e++) {
       const a = t[e], b = t[(e + 1) % 3];
       if (!dirEdges.has(`${b}_${a}`)) {
-        if (!boundary.has(a)) boundary.set(a, new Set());
-        boundary.get(a).add(b);
+        const angle = Math.atan2(xy[b].y - xy[a].y, xy[b].x - xy[a].x);
+        if (!outs.has(a)) outs.set(a, []);
+        outs.get(a).push({ to: b, angle, used: false });
+        edgeCount++;
       }
     }
   }
-  if (boundary.size === 0) return null;
+  if (edgeCount === 0) return null;
+  for (const list of outs.values()) list.sort((p, q) => p.angle - q.angle);
 
-  // Walk loops by consuming edges. Each boundary edge is visited exactly once.
-  let best = [];
-  while (boundary.size > 0) {
-    const start = boundary.keys().next().value;
-    const comp = [start];
-    let cur = start;
-    while (true) {
-      const outs = boundary.get(cur);
-      if (!outs || outs.size === 0) break;
-      const next = outs.values().next().value;
-      outs.delete(next);
-      if (outs.size === 0) boundary.delete(cur);
-      if (next === start) break;
-      comp.push(next);
-      cur = next;
+  // At vertex `a`, given the reverse-of-incoming direction `revAngle`
+  // (pointing from `a` back to prev), pick the outgoing edge requiring
+  // the smallest clockwise rotation from `revAngle`. This is the standard
+  // "next CW edge at vertex" rule and yields a simple loop each walk.
+  function pickOut(a, revAngle) {
+    const list = outs.get(a);
+    if (!list) return null;
+    let best = null;
+    let bestDelta = Infinity;
+    for (const item of list) {
+      if (item.used) continue;
+      let delta = revAngle - item.angle;
+      delta -= Math.floor(delta / (2 * Math.PI)) * 2 * Math.PI;
+      if (delta === 0) delta = 2 * Math.PI;
+      if (delta < bestDelta) { bestDelta = delta; best = item; }
     }
-    if (comp.length > best.length) best = comp;
+    return best;
+  }
+
+  let best = [];
+  let bestArea = 0;
+  for (const [startA, startList] of outs) {
+    for (const startItem of startList) {
+      if (startItem.used) continue;
+      startItem.used = true;
+      const comp = [startA];
+      let prev = startA, cur = startItem.to;
+      let guard = edgeCount + 2;
+      while (cur !== startA && guard-- > 0) {
+        comp.push(cur);
+        const revAngle = Math.atan2(xy[prev].y - xy[cur].y, xy[prev].x - xy[cur].x);
+        const out = pickOut(cur, revAngle);
+        if (!out) break;
+        out.used = true;
+        prev = cur;
+        cur = out.to;
+      }
+      if (comp.length < 3) continue;
+      const area = polygonArea2D(comp.map(i => xy[i]));
+      // CCW loops (positive area) trace an outer boundary; holes are CW.
+      // Keep the loop with largest positive area.
+      if (area > bestArea) { bestArea = area; best = comp; }
+    }
   }
 
   return best.length >= 3 ? best.map(i => xy[i]) : null;
