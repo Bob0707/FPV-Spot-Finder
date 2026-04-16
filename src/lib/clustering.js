@@ -155,15 +155,16 @@ function polygonArea2D(pts) {
 }
 
 // ── Alpha shape: extract concave boundary from Delaunay triangulation ─────
-// Returns array of {x, y} polygon vertices (largest simple CCW loop), or
-// null if no alpha triangles exist. Uses angular edge pairing at each
-// vertex so pinch points decompose into disjoint simple loops instead of
-// self-intersecting tangles.
+// Returns array of XY rings (all CCW outer loops). CW loops are holes —
+// discarded here so each cluster renders as a solid filled region. Returns
+// empty array if no alpha triangles exist. Uses angular edge pairing at
+// each vertex so pinch points decompose into disjoint simple loops instead
+// of self-intersecting tangles.
 function extractAlphaShape(xy, tris, alphaMeters) {
   const alphaTris = tris.filter(
     t => circumradiusXY(xy[t[0]], xy[t[1]], xy[t[2]]) <= alphaMeters
   );
-  if (alphaTris.length === 0) return null;
+  if (alphaTris.length === 0) return [];
 
   // Directed edges present in alpha triangles
   const dirEdges = new Set();
@@ -188,7 +189,7 @@ function extractAlphaShape(xy, tris, alphaMeters) {
       }
     }
   }
-  if (edgeCount === 0) return null;
+  if (edgeCount === 0) return [];
   for (const list of outs.values()) list.sort((p, q) => p.angle - q.angle);
 
   // At vertex `a`, given the reverse-of-incoming direction `revAngle`
@@ -210,8 +211,7 @@ function extractAlphaShape(xy, tris, alphaMeters) {
     return best;
   }
 
-  let best = [];
-  let bestArea = 0;
+  const rings = [];
   for (const [startA, startList] of outs) {
     for (const startItem of startList) {
       if (startItem.used) continue;
@@ -229,14 +229,13 @@ function extractAlphaShape(xy, tris, alphaMeters) {
         cur = out.to;
       }
       if (comp.length < 3) continue;
-      const area = polygonArea2D(comp.map(i => xy[i]));
-      // CCW loops (positive area) trace an outer boundary; holes are CW.
-      // Keep the loop with largest positive area.
-      if (area > bestArea) { bestArea = area; best = comp; }
+      const pts = comp.map(i => xy[i]);
+      // CCW loops (positive area) are outer rings; CW loops are holes.
+      if (polygonArea2D(pts) > 0) rings.push(pts);
     }
   }
 
-  return best.length >= 3 ? best.map(i => xy[i]) : null;
+  return rings;
 }
 
 // ── Chaikin corner-cutting smoothing ─────────────────────────────────────
@@ -289,8 +288,11 @@ const SMOOTH_ITERATIONS = 2;
 const MAX_DELAUNAY_PTS = 1200;
 const GRID_CELL_M = ALPHA_METERS / 2;
 
+// Returns an array of rings (lat/lng loops). Each ring is a separate outer
+// boundary — the alpha shape may decompose into multiple disjoint loops for
+// pinched or multi-component clusters. Empty array means no valid boundary.
 function buildZoneHull(pts) {
-  if (pts.length < 3) return pts;
+  if (pts.length < 3) return [];
 
   let sample = pts;
   let adaptiveAlpha = ALPHA_METERS;
@@ -306,22 +308,28 @@ function buildZoneHull(pts) {
   const xy = sample.map(p => proj.toXY(p));
 
   const tris = delaunay2D(xy);
-  const alphaPts = extractAlphaShape(xy, tris, adaptiveAlpha);
-  const baseXY = alphaPts ?? convexHullXY(xy);
+  const alphaRings = extractAlphaShape(xy, tris, adaptiveAlpha);
 
-  if (baseXY.length < 3) return pts.slice(0, 3);
+  const rawRings = alphaRings.length > 0 ? alphaRings : (() => {
+    const hull = convexHullXY(xy);
+    return hull.length >= 3 ? [hull] : [];
+  })();
 
-  const smoothed = chaikinSmooth(baseXY, SMOOTH_ITERATIONS);
-  return smoothed.map(p => proj.fromXY(p));
+  if (rawRings.length === 0) return [];
+
+  return rawRings.map(ring => {
+    const smoothed = chaikinSmooth(ring, SMOOTH_ITERATIONS);
+    return smoothed.map(p => proj.fromXY(p));
+  });
 }
 
-// ── Point-in-polygon (ray casting, works for any simple polygon) ──────────
-function pointInHull(p, hull) {
+// ── Point-in-ring (ray casting, single ring of {lat, lng}) ────────────────
+function pointInRing(p, ring) {
   let inside = false;
-  const n = hull.length;
+  const n = ring.length;
   for (let i = 0, j = n - 1; i < n; j = i++) {
-    const xi = hull[i].lng, yi = hull[i].lat;
-    const xj = hull[j].lng, yj = hull[j].lat;
+    const xi = ring[i].lng, yi = ring[i].lat;
+    const xj = ring[j].lng, yj = ring[j].lat;
     if (
       (yi > p.lat) !== (yj > p.lat) &&
       p.lng < ((xj - xi) * (p.lat - yi)) / (yj - yi) + xi
@@ -332,15 +340,52 @@ function pointInHull(p, hull) {
   return inside;
 }
 
+// Point is inside a multi-ring hull if it lies inside any CCW ring.
+function pointInHull(p, hull) {
+  for (const ring of hull) if (pointInRing(p, ring)) return true;
+  return false;
+}
+
+// ── Segment intersection (proper crossing, shared endpoints don't count) ──
+function segmentsIntersect(a, b, c, d) {
+  const d1 = (b.lng - a.lng) * (c.lat - a.lat) - (b.lat - a.lat) * (c.lng - a.lng);
+  const d2 = (b.lng - a.lng) * (d.lat - a.lat) - (b.lat - a.lat) * (d.lng - a.lng);
+  const d3 = (d.lng - c.lng) * (a.lat - c.lat) - (d.lat - c.lat) * (a.lng - c.lng);
+  const d4 = (d.lng - c.lng) * (b.lat - c.lat) - (d.lat - c.lat) * (b.lng - c.lng);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+         ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+// Any edge of ringA crosses any edge of ringB. O(|A|·|B|), but ring sizes
+// are bounded by subsampling so this stays tractable.
+function ringsIntersect(ringA, ringB) {
+  const na = ringA.length, nb = ringB.length;
+  for (let i = 0, pi = na - 1; i < na; pi = i++) {
+    for (let j = 0, pj = nb - 1; j < nb; pj = j++) {
+      if (segmentsIntersect(ringA[pi], ringA[i], ringB[pj], ringB[j])) return true;
+    }
+  }
+  return false;
+}
+
 // ── Cluster overlap check ──────────────────────────────────────────────────
+// Two hulls overlap if: (a) any edge of one crosses any edge of the other,
+// or (b) one hull fully contains a vertex of the other. Vertex-only checks
+// alone miss X-shaped crossings where all vertices are outside — which is
+// exactly how elongated alpha-shape ribbons fail to merge.
 function hullsOverlap(c1, c2) {
   if (haversineDistance(c1.centroid, c2.centroid) > c1.radiusMeters + c2.radiusMeters) {
     return false;
   }
-  return (
-    c1.hull.some((p) => pointInHull(p, c2.hull)) ||
-    c2.hull.some((p) => pointInHull(p, c1.hull))
-  );
+  for (const ringA of c1.hull) {
+    for (const ringB of c2.hull) {
+      if (ringsIntersect(ringA, ringB)) return true;
+    }
+  }
+  // Containment check: first vertex of each ring against the other hull.
+  for (const ring of c1.hull) if (ring.length > 0 && pointInHull(ring[0], c2.hull)) return true;
+  for (const ring of c2.hull) if (ring.length > 0 && pointInHull(ring[0], c1.hull)) return true;
+  return false;
 }
 
 // ── Build a single cluster object ─────────────────────────────────────────

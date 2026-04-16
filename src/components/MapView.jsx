@@ -7,16 +7,25 @@ import { DACH_CENTER, DACH_ZOOM } from "../lib/constants.js";
 import { IconDrone } from "./Icons.jsx";
 
 // ── Convert clusters → GeoJSON FeatureCollection of hull polygons ───────────
+// Each cluster's `hull` is an array of rings (disjoint CCW loops). Emitting
+// as MultiPolygon keeps every loop visible — dropping smaller loops would
+// leave whole building groups unmarked.
 function clustersToGeoJSON(clusters) {
   return {
     type: "FeatureCollection",
     features: (clusters ?? []).flatMap(({ hull, pointCount }) => {
-      if (!hull || hull.length < 3) return [];
-      const ring = hull.map((p) => [p.lng, p.lat]);
-      ring.push(ring[0]); // close the GeoJSON ring
+      if (!hull || hull.length === 0) return [];
+      const polygons = hull
+        .filter((ring) => ring.length >= 3)
+        .map((ring) => {
+          const coords = ring.map((p) => [p.lng, p.lat]);
+          coords.push(coords[0]); // close the GeoJSON ring
+          return [coords];
+        });
+      if (polygons.length === 0) return [];
       return [{
         type: "Feature",
-        geometry: { type: "Polygon", coordinates: [ring] },
+        geometry: { type: "MultiPolygon", coordinates: polygons },
         properties: { pointCount },
       }];
     }),
