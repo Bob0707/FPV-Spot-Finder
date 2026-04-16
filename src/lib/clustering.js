@@ -294,7 +294,7 @@ const GRID_CELL_M = ALPHA_METERS / 2;
 // Merge clusters whose bounding circles are within this distance, not just
 // strictly overlapping — smoothed alpha boundaries commonly leave thin gaps
 // between visually-touching clusters that the strict edge test misses.
-const MERGE_BUFFER_METERS = 50;
+const MERGE_BUFFER_METERS = 1;
 
 // Returns an array of rings (lat/lng loops). Each ring is a separate outer
 // boundary — the alpha shape may decompose into multiple disjoint loops for
