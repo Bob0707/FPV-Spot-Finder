@@ -356,8 +356,26 @@ function segmentsIntersect(a, b, c, d) {
          ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
 }
 
-// Any edge of ringA crosses any edge of ringB. O(|A|·|B|), but ring sizes
-// are bounded by subsampling so this stays tractable.
+// Bounding box of a lat/lng ring.
+function ringBBox(ring) {
+  let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+  for (const p of ring) {
+    if (p.lat < minLat) minLat = p.lat;
+    if (p.lat > maxLat) maxLat = p.lat;
+    if (p.lng < minLng) minLng = p.lng;
+    if (p.lng > maxLng) maxLng = p.lng;
+  }
+  return { minLat, maxLat, minLng, maxLng };
+}
+
+function bboxesOverlap(a, b) {
+  return a.minLat <= b.maxLat && b.minLat <= a.maxLat &&
+         a.minLng <= b.maxLng && b.minLng <= a.maxLng;
+}
+
+// Any edge of ringA crosses any edge of ringB. O(|A|·|B|) worst-case but
+// callers bbox-filter first — Chaikin smoothing quadruples ring size so
+// skipping disjoint pairs is essential to keep merge time reasonable.
 function ringsIntersect(ringA, ringB) {
   const na = ringA.length, nb = ringB.length;
   for (let i = 0, pi = na - 1; i < na; pi = i++) {
@@ -377,14 +395,17 @@ function hullsOverlap(c1, c2) {
   if (haversineDistance(c1.centroid, c2.centroid) > c1.radiusMeters + c2.radiusMeters) {
     return false;
   }
-  for (const ringA of c1.hull) {
-    for (const ringB of c2.hull) {
-      if (ringsIntersect(ringA, ringB)) return true;
+  const hullA = c1.hull, hullB = c2.hull;
+  const bboxA = c1.hullBBoxes, bboxB = c2.hullBBoxes;
+  for (let i = 0; i < hullA.length; i++) {
+    for (let j = 0; j < hullB.length; j++) {
+      if (!bboxesOverlap(bboxA[i], bboxB[j])) continue;
+      if (ringsIntersect(hullA[i], hullB[j])) return true;
     }
   }
   // Containment check: first vertex of each ring against the other hull.
-  for (const ring of c1.hull) if (ring.length > 0 && pointInHull(ring[0], c2.hull)) return true;
-  for (const ring of c2.hull) if (ring.length > 0 && pointInHull(ring[0], c1.hull)) return true;
+  for (const ring of hullA) if (ring.length > 0 && pointInHull(ring[0], hullB)) return true;
+  for (const ring of hullB) if (ring.length > 0 && pointInHull(ring[0], hullA)) return true;
   return false;
 }
 
@@ -400,7 +421,8 @@ function buildCluster(pts) {
     0
   );
   const hull = buildZoneHull(pts);
-  return { centroid, pointCount: n, radiusMeters, hull, _pts: pts };
+  const hullBBoxes = hull.map(ringBBox);
+  return { centroid, pointCount: n, radiusMeters, hull, hullBBoxes, _pts: pts };
 }
 
 // ── Merge overlapping clusters until stable ────────────────────────────────
