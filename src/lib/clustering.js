@@ -161,30 +161,36 @@ function extractAlphaShape(xy, tris, alphaMeters) {
     }
   }
 
-  // Boundary: directed edges whose reverse is absent
-  const boundaryFwd = new Map(); // a → b
+  // Boundary: directed edges whose reverse is absent.
+  // A vertex may have multiple outgoing boundary edges at pinch points, so
+  // store a set per vertex — a single Map<a,b> would silently drop edges.
+  const boundary = new Map(); // a → Set<b>
   for (const t of alphaTris) {
     for (let e = 0; e < 3; e++) {
       const a = t[e], b = t[(e + 1) % 3];
       if (!dirEdges.has(`${b}_${a}`)) {
-        boundaryFwd.set(a, b);
+        if (!boundary.has(a)) boundary.set(a, new Set());
+        boundary.get(a).add(b);
       }
     }
   }
-  if (boundaryFwd.size === 0) return null;
+  if (boundary.size === 0) return null;
 
-  // Walk all connected components, keep largest
-  const visited = new Set();
+  // Walk loops by consuming edges. Each boundary edge is visited exactly once.
   let best = [];
-
-  for (const [start] of boundaryFwd) {
-    if (visited.has(start)) continue;
-    const comp = [];
+  while (boundary.size > 0) {
+    const start = boundary.keys().next().value;
+    const comp = [start];
     let cur = start;
-    while (!visited.has(cur) && boundaryFwd.has(cur)) {
-      visited.add(cur);
-      comp.push(cur);
-      cur = boundaryFwd.get(cur);
+    while (true) {
+      const outs = boundary.get(cur);
+      if (!outs || outs.size === 0) break;
+      const next = outs.values().next().value;
+      outs.delete(next);
+      if (outs.size === 0) boundary.delete(cur);
+      if (next === start) break;
+      comp.push(next);
+      cur = next;
     }
     if (comp.length > best.length) best = comp;
   }
@@ -208,35 +214,58 @@ function chaikinSmooth(pts, iterations = 2) {
   return p;
 }
 
-// ── Subsample large point sets while preserving angular coverage ──────────
-// Sorts by angle from centroid so all directions are represented.
-function subsample(pts, maxPts) {
-  if (pts.length <= maxPts) return pts;
-  const cx = pts.reduce((s, p) => s + p.lat, 0) / pts.length;
-  const cLng = pts.reduce((s, p) => s + p.lng, 0) / pts.length;
-  const sorted = [...pts].sort(
-    (a, b) =>
-      Math.atan2(a.lat - cx, a.lng - cLng) -
-      Math.atan2(b.lat - cx, b.lng - cLng)
-  );
-  const stride = Math.ceil(sorted.length / maxPts);
-  return sorted.filter((_, i) => i % stride === 0);
+// ── Grid-based subsampling: preserves spatial density ─────────────────────
+// Angular sorting would space neighbors arbitrarily far apart for wide
+// clusters, breaking the alpha shape. A grid keeps cell-sized spacing so
+// alpha filtering can always connect neighbors. Cell size coarsens until
+// the result fits under maxPts; returned cellM lets the caller scale alpha.
+function subsampleGrid(pts, maxPts, initialCellM) {
+  const meanLat = pts.reduce((s, p) => s + p.lat, 0) / pts.length;
+  const mPerLat = 111320;
+  const mPerLng = 111320 * Math.cos(meanLat * Math.PI / 180);
+
+  let cellM = initialCellM;
+  let grid;
+  for (let iter = 0; iter < 16; iter++) {
+    grid = new Map();
+    const latStep = cellM / mPerLat;
+    const lngStep = cellM / mPerLng;
+    for (const p of pts) {
+      const cx = Math.floor(p.lng / lngStep);
+      const cy = Math.floor(p.lat / latStep);
+      const key = `${cx},${cy}`;
+      if (!grid.has(key)) grid.set(key, p);
+    }
+    if (grid.size <= maxPts) break;
+    cellM *= 1.4;
+  }
+  return { points: [...grid.values()], cellM };
 }
 
 // ── Build zone hull: alpha shape + Chaikin smooth, fallback to convex hull ─
 const ALPHA_METERS = 100;
 const SMOOTH_ITERATIONS = 2;
-const MAX_DELAUNAY_PTS = 300;
+const MAX_DELAUNAY_PTS = 1200;
+const GRID_CELL_M = ALPHA_METERS / 2;
 
 function buildZoneHull(pts) {
   if (pts.length < 3) return pts;
 
-  const sample = subsample(pts, MAX_DELAUNAY_PTS);
+  let sample = pts;
+  let adaptiveAlpha = ALPHA_METERS;
+
+  if (pts.length > MAX_DELAUNAY_PTS) {
+    const { points, cellM } = subsampleGrid(pts, MAX_DELAUNAY_PTS, GRID_CELL_M);
+    sample = points;
+    // Grid diagonal ≈ cellM·√2; alpha must exceed it for neighbors to connect.
+    adaptiveAlpha = Math.max(ALPHA_METERS, cellM * 1.8);
+  }
+
   const proj = makeProjection(sample);
   const xy = sample.map(p => proj.toXY(p));
 
   const tris = delaunay2D(xy);
-  const alphaPts = extractAlphaShape(xy, tris, ALPHA_METERS);
+  const alphaPts = extractAlphaShape(xy, tris, adaptiveAlpha);
   const baseXY = alphaPts ?? convexHullXY(xy);
 
   if (baseXY.length < 3) return pts.slice(0, 3);
