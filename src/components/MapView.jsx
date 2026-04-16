@@ -2,9 +2,24 @@ import React, { useState, useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import { BASE_LAYERS, OVERLAY_LAYERS, SPOT_TYPES, NATURSCHUTZ_COLOR } from "../lib/constants.js";
 import { zoneColorExpr } from "../lib/airspace.js";
-import { readUrlParams, makeDonutGeoJSON, makeCircleGeoJSON, zoomForRadius } from "../lib/helpers.js";
+import { readUrlParams, makeDonutGeoJSON, makeCircleGeoJSON, circleCoords, zoomForRadius } from "../lib/helpers.js";
 import { DACH_CENTER, DACH_ZOOM } from "../lib/constants.js";
 import { IconDrone } from "./Icons.jsx";
+
+// ── Convert clusters → GeoJSON FeatureCollection of circle polygons ─────────
+function clustersToGeoJSON(clusters) {
+  return {
+    type: "FeatureCollection",
+    features: (clusters ?? []).map(({ centroid, radiusMeters, pointCount }) => ({
+      type: "Feature",
+      geometry: {
+        type: "Polygon",
+        coordinates: [circleCoords([centroid.lng, centroid.lat], radiusMeters / 1000, 32)],
+      },
+      properties: { pointCount },
+    })),
+  };
+}
 
 export function MapView({
   mapRef,
@@ -23,6 +38,8 @@ export function MapView({
   showAirspace,
   showNaturschutz,
   onZoneClick,
+  buildingClusters,
+  showBuildingZones,
 }) {
   const [loaded, setLoaded] = useState(false);
   const initDone = useRef(false);
@@ -132,6 +149,23 @@ export function MapView({
       source: "airspace-data",
       layout: { visibility: "none" },
       paint: { "line-color": colorExpr, "line-width": 2.2, "line-opacity": 0.95 },
+    });
+
+    // Building clusters
+    sources["building-clusters"] = { type: "geojson", data: { type: "FeatureCollection", features: [] } };
+    layers.push({
+      id: "building-clusters-fill",
+      type: "fill",
+      source: "building-clusters",
+      layout: { visibility: "none" },
+      paint: { "fill-color": "#f97316", "fill-opacity": 0.20 },
+    });
+    layers.push({
+      id: "building-clusters-outline",
+      type: "line",
+      source: "building-clusters",
+      layout: { visibility: "none" },
+      paint: { "line-color": "#ef4444", "line-width": 1.2, "line-opacity": 0.70 },
     });
 
     // Search radius sources
@@ -396,6 +430,21 @@ export function MapView({
       }
     });
   }, [showNaturschutz, loaded]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded) return;
+    map.getSource("building-clusters")?.setData(clustersToGeoJSON(buildingClusters));
+  }, [buildingClusters, loaded]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded) return;
+    const vis = showBuildingZones ? "visible" : "none";
+    ["building-clusters-fill", "building-clusters-outline"].forEach((id) => {
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
+    });
+  }, [showBuildingZones, loaded]);
 
   return (
     <div ref={mapContainerRef} style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}>

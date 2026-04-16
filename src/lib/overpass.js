@@ -284,7 +284,7 @@ export async function fetchSpots(center, radiusMinKm, radiusMaxKm, queryTypes, s
     }
   }
 
-  const result = { features, rawCount, buildingCount, remark: null, turboUrl };
+  const result = { features, rawCount, buildingCount, clusters, remark: null, turboUrl };
   setCached(cacheKey, result);
   return result;
 }

@@ -113,6 +113,8 @@ function FPVSpotFinder() {
   const [debugInfo, setDebugInfo] = useState(null);
   const [scoreMin, setScoreMin] = useState(0);
   const [showHeatmap, setShowHeatmap] = useState(false);
+  const [buildingClusters, setBuildingClusters] = useState([]);
+  const [showBuildingZones, setShowBuildingZones] = useState(false);
   const [queryTypes, setQueryTypes] = useState([...ALL_SPOT_TYPE_IDS]);
 
   // Phase 7
@@ -324,8 +326,9 @@ function FPVSpotFinder() {
       setSelectedSpot(null);
       setDebugInfo(null);
       fetchSpots(circle.center, circle.radiusMinKm, circle.radiusMaxKm, fetchTypes, ctrl.signal)
-        .then(({ features, rawCount, buildingCount, remark, turboUrl }) => {
+        .then(({ features, rawCount, buildingCount, clusters, remark, turboUrl }) => {
           setSpots(features);
+          setBuildingClusters(clusters ?? []);
           setDebugInfo({ rawCount, classified: features.length, buildingCount, remark, turboUrl });
           if (rawCount === 0) {
             showToast("Overpass: 0 Elemente – Turbo-Link im Filter-Panel prüfen.", "warn");
@@ -565,6 +568,8 @@ function FPVSpotFinder() {
                   onScoreMinChange={setScoreMin}
                   showHeatmap={showHeatmap}
                   onHeatmapToggle={() => setShowHeatmap((v) => !v)}
+                  showBuildingZones={showBuildingZones}
+                  onBuildingZonesToggle={() => setShowBuildingZones((v) => !v)}
                 />
               </SidebarSection>
 
@@ -647,6 +652,8 @@ function FPVSpotFinder() {
               showAirspace={showAirspace}
               showNaturschutz={showNaturschutz}
               onZoneClick={handleZoneClick}
+              buildingClusters={buildingClusters}
+              showBuildingZones={showBuildingZones}
             />
             {selectedSpot && (
               <SpotDetailPanel

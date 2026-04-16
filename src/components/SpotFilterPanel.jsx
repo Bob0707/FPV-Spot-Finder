@@ -25,6 +25,8 @@ export default function SpotFilterPanel({
   onScoreMinChange,
   showHeatmap,
   onHeatmapToggle,
+  showBuildingZones,
+  onBuildingZonesToggle,
 }) {
   const [showDebug, setShowDebug] = useState(false);
 
@@ -188,6 +190,22 @@ export default function SpotFilterPanel({
         </div>
       )}
 
+      {/* Building zones toggle */}
+      {!loading && total > 0 && (
+        <div className="heatmap-toggle-row">
+          <div className="heatmap-toggle-info">
+            <span className="heatmap-toggle-icon">🏘️</span>
+            <span className="heatmap-toggle-label">Bebauungszonen</span>
+            <span className="heatmap-toggle-desc">Gebäude-Cluster auf Karte</span>
+          </div>
+          <button
+            className={`overlay-toggle ${showBuildingZones ? "active" : ""}`}
+            onClick={onBuildingZonesToggle}
+            style={{ "--toggle-color": "#f97316" }}
+          />
+        </div>
+      )}
+
       {/* Filter chips */}
       <div className="filter-grid">
         {SPOT_TYPES.map((st) => {
@@ -275,6 +293,14 @@ export default function SpotFilterPanel({
                   {debugInfo.classified}
                 </span>
               </div>
+              {debugInfo.buildingCount != null && (
+                <div className="debug-row">
+                  <span className="debug-label">Gebäude</span>
+                  <span className={`debug-value ${debugInfo.buildingCount === 0 ? "debug-zero" : "debug-ok"}`}>
+                    {debugInfo.buildingCount}
+                  </span>
+                </div>
+              )}
               {debugInfo.remark && <div className="debug-remark">{debugInfo.remark}</div>}
               {debugInfo.turboUrl && (
                 <a
