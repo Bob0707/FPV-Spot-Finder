@@ -2,22 +2,24 @@ import React, { useState, useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import { BASE_LAYERS, OVERLAY_LAYERS, SPOT_TYPES, NATURSCHUTZ_COLOR } from "../lib/constants.js";
 import { zoneColorExpr } from "../lib/airspace.js";
-import { readUrlParams, makeDonutGeoJSON, makeCircleGeoJSON, circleCoords, zoomForRadius } from "../lib/helpers.js";
+import { readUrlParams, makeDonutGeoJSON, makeCircleGeoJSON, zoomForRadius } from "../lib/helpers.js";
 import { DACH_CENTER, DACH_ZOOM } from "../lib/constants.js";
 import { IconDrone } from "./Icons.jsx";
 
-// ── Convert clusters → GeoJSON FeatureCollection of circle polygons ─────────
+// ── Convert clusters → GeoJSON FeatureCollection of hull polygons ───────────
 function clustersToGeoJSON(clusters) {
   return {
     type: "FeatureCollection",
-    features: (clusters ?? []).map(({ centroid, radiusMeters, pointCount }) => ({
-      type: "Feature",
-      geometry: {
-        type: "Polygon",
-        coordinates: [circleCoords([centroid.lng, centroid.lat], radiusMeters / 1000, 32)],
-      },
-      properties: { pointCount },
-    })),
+    features: (clusters ?? []).flatMap(({ hull, pointCount }) => {
+      if (!hull || hull.length < 3) return [];
+      const ring = hull.map((p) => [p.lng, p.lat]);
+      ring.push(ring[0]); // close the GeoJSON ring
+      return [{
+        type: "Feature",
+        geometry: { type: "Polygon", coordinates: [ring] },
+        properties: { pointCount },
+      }];
+    }),
   };
 }
 

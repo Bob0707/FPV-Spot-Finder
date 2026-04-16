@@ -223,8 +223,14 @@ export async function fetchSpots(center, radiusMinKm, radiusMaxKm, queryTypes, s
   const spotEls = all.filter((el) => !(el.type === "node" && el.tags?.place));
   const rawCount = spotEls.length;
 
-  // ── Cluster buildings (if fetch succeeded) ────────────────────────────
-  const buildingPoints = buildingSettled.ok ? buildingSettled.value : [];
+  // ── Filter building points to search donut, then cluster ─────────────
+  // The Overpass bbox over-fetches (square, not circle) so we clip to the
+  // actual circle and also exclude the inner hole (radiusMinKm).
+  const rawBuildingPoints = buildingSettled.ok ? buildingSettled.value : [];
+  const buildingPoints = rawBuildingPoints.filter((p) => {
+    const d = haversineKm(lat, lng, p.lat, p.lng);
+    return d <= radiusMaxKm && d >= radiusMinKm;
+  });
   const buildingCount = buildingPoints.length;
   const clusters = buildingCount > 0 ? clusterBuildings(buildingPoints) : [];
 
