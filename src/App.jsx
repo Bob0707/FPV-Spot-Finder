@@ -7,6 +7,7 @@ import { ALL_SPOT_TYPE_IDS } from "./lib/constants.js";
 import { getScoreColor } from "./lib/scoring.js";
 import { fetchSpots, fetchBuildingClusters, applyBuildingScores } from "./lib/overpass.js";
 import { fetchOpenAIPData, fetchNaturschutzData } from "./lib/airspace.js";
+import { filterRelevantZones, loadGeoZonesFromFile } from "./lib/geozones.js";
 import { fetchWeather, computeWeatherAmpel } from "./lib/weather.js";
 import { getSunTimes, getSunStatus, formatTime } from "./lib/suncalc.js";
 import { readUrlParams, writeUrlParams, zoomForRadius } from "./lib/helpers.js";
@@ -25,6 +26,7 @@ import LayerPanel from "./components/LayerPanel.jsx";
 import SpotFilterPanel from "./components/SpotFilterPanel.jsx";
 import { SpotDetailPanel } from "./components/SpotDetailPanel.jsx";
 import { AirspacePanel } from "./components/AirspacePanel.jsx";
+import { GeoZonesPanel } from "./components/GeoZonesPanel.jsx";
 import { ZoneDetailPanel } from "./components/ZoneDetailPanel.jsx";
 import FlyCheckPanel from "./components/FlyCheckPanel.jsx";
 import WeatherPanel from "./components/WeatherPanel.jsx";
@@ -139,6 +141,18 @@ function FPVSpotFinder() {
   const [loadingWeather, setLoadingWeather] = useState(false);
   const [weatherError, setWeatherError] = useState(null);
 
+  // UAS GeoZonen (dipul.de KML-Upload)
+  const [geoZoneFeatures, setGeoZoneFeatures] = useState([]);
+  const [loadingGeoZones, setLoadingGeoZones] = useState(false);
+  const [geoZoneError, setGeoZoneError] = useState(null);
+  const [showGeoZones, setShowGeoZones] = useState(false);
+  const [filterRelevantOnly, setFilterRelevantOnly] = useState(true);
+
+  const visibleGeoZones = useMemo(
+    () => filterRelevantOnly ? filterRelevantZones(geoZoneFeatures) : geoZoneFeatures,
+    [geoZoneFeatures, filterRelevantOnly]
+  );
+
   const filteredSpots = useMemo(
     () => spots.filter((f) => (f.properties?.score ?? 0) >= scoreMin),
     [spots, scoreMin]
@@ -216,8 +230,8 @@ function FPVSpotFinder() {
   // Phase 8: auto-recompute fly check when spot or zone data changes
   useEffect(() => {
     if (!selectedSpot) { setFlyCheckResult(null); return; }
-    setFlyCheckResult(computeFlyCheck(selectedSpot, airspaceFeatures, naturschutzFeatures));
-  }, [selectedSpot, airspaceFeatures, naturschutzFeatures]);
+    setFlyCheckResult(computeFlyCheck(selectedSpot, airspaceFeatures, naturschutzFeatures, visibleGeoZones));
+  }, [selectedSpot, airspaceFeatures, naturschutzFeatures, visibleGeoZones]);
 
   // Phase 10: fetch weather when selected spot changes
   const doFetchWeather = useCallback(async (spot) => {
@@ -302,6 +316,28 @@ function FPVSpotFinder() {
       if (showNaturschutz) setTimeout(() => doFetchNaturschutz(), 100);
     }
   }, [searchCircle]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleLoadGeoZoneFile = useCallback(async (file) => {
+    setLoadingGeoZones(true);
+    setGeoZoneError(null);
+    try {
+      const collection = await loadGeoZonesFromFile(file);
+      const features = collection.features || [];
+      setGeoZoneFeatures(features);
+      if (features.length > 0) setShowGeoZones(true);
+      showToast(
+        features.length > 0
+          ? `${features.length} GeoZonen aus ${file.name} geladen`
+          : `${file.name} enthielt keine GeoZonen`,
+        features.length > 0 ? "success" : "warn"
+      );
+    } catch (err) {
+      setGeoZoneError(err.message);
+      showToast(`GeoZonen: ${err.message}`, "warn");
+    } finally {
+      setLoadingGeoZones(false);
+    }
+  }, [showToast]);
 
   const handleSaveApiKey = useCallback(
     (key) => {
@@ -450,6 +486,13 @@ function FPVSpotFinder() {
     if (showAirspace || showNaturschutz) return "Aktiv";
     return undefined;
   }, [airspaceFeatures.length, naturschutzFeatures.length, loadingAirspace, loadingNaturschutz, showAirspace, showNaturschutz]);
+
+  const geoZoneBadge = useMemo(() => {
+    if (loadingGeoZones) return "lädt…";
+    if (visibleGeoZones.length > 0) return `${visibleGeoZones.length} Zonen`;
+    if (geoZoneFeatures.length > 0) return `${geoZoneFeatures.length} geladen`;
+    return undefined;
+  }, [loadingGeoZones, visibleGeoZones.length, geoZoneFeatures.length]);
 
   const weatherBadge = useMemo(() => {
     if (!selectedSpot) return undefined;
@@ -611,6 +654,19 @@ function FPVSpotFinder() {
                 />
               </SidebarSection>
 
+              <SidebarSection icon={<IconShield />} title="UAS-Geozonen" {...sec("UAS-Geozonen")} badge={geoZoneBadge}>
+                <GeoZonesPanel
+                  geoZoneFeatures={visibleGeoZones}
+                  loadingGeoZones={loadingGeoZones}
+                  geoZoneError={geoZoneError}
+                  showGeoZones={showGeoZones}
+                  onShowGeoZonesToggle={() => setShowGeoZones((v) => !v)}
+                  onLoadFile={handleLoadGeoZoneFile}
+                  filterRelevantOnly={filterRelevantOnly}
+                  onFilterToggle={setFilterRelevantOnly}
+                />
+              </SidebarSection>
+
               <SidebarSection
                 icon={<IconTarget />}
                 title="Fly-or-No-Fly Check"
@@ -630,6 +686,7 @@ function FPVSpotFinder() {
                   flyCheckResult={flyCheckResult}
                   airspaceLoaded={airspaceFeatures.length > 0}
                   naturschutzLoaded={naturschutzFeatures.length > 0}
+                  geoZonesLoaded={geoZoneFeatures.length > 0}
                 />
               </SidebarSection>
 
@@ -672,6 +729,8 @@ function FPVSpotFinder() {
               onZoneClick={handleZoneClick}
               buildingClusters={buildingClusters}
               showBuildingZones={showBuildingZones}
+              geoZoneFeatures={visibleGeoZones}
+              showGeoZones={showGeoZones}
             />
             {selectedSpot && (
               <SpotDetailPanel

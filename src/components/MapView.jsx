@@ -51,6 +51,8 @@ export function MapView({
   onZoneClick,
   buildingClusters,
   showBuildingZones,
+  geoZoneFeatures,
+  showGeoZones,
 }) {
   const [loaded, setLoaded] = useState(false);
   const initDone = useRef(false);
@@ -160,6 +162,32 @@ export function MapView({
       source: "airspace-data",
       layout: { visibility: "none" },
       paint: { "line-color": colorExpr, "line-width": 2.2, "line-opacity": 0.95 },
+    });
+
+    // UAS-Geozonen (dipul.de KML-Upload) — Farbe je nach semantischem zoneType
+    sources["geozones-data"] = { type: "geojson", data: { type: "FeatureCollection", features: [] } };
+    const geozoneColorExpr = [
+      "match", ["get", "zoneType"],
+      "prohibited", "#ef4444",
+      "restricted", "#f59e0b",
+      "danger",     "#f97316",
+      "REA",        "#60a5fa",
+      "nature",     "#22d3a7",
+      "#94a3b8",
+    ];
+    layers.push({
+      id: "geozones-fill",
+      type: "fill",
+      source: "geozones-data",
+      layout: { visibility: "none" },
+      paint: { "fill-color": geozoneColorExpr, "fill-opacity": 0.18 },
+    });
+    layers.push({
+      id: "geozones-outline",
+      type: "line",
+      source: "geozones-data",
+      layout: { visibility: "none" },
+      paint: { "line-color": geozoneColorExpr, "line-width": 1.8, "line-opacity": 0.85, "line-dasharray": [2, 2] },
     });
 
     // Building clusters
@@ -441,6 +469,22 @@ export function MapView({
       }
     });
   }, [showNaturschutz, loaded]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded) return;
+    map.getSource("geozones-data")?.setData({ type: "FeatureCollection", features: geoZoneFeatures || [] });
+  }, [geoZoneFeatures, loaded]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded) return;
+    ["geozones-fill", "geozones-outline"].forEach((id) => {
+      if (map.getLayer(id)) {
+        map.setLayoutProperty(id, "visibility", showGeoZones ? "visible" : "none");
+      }
+    });
+  }, [showGeoZones, loaded]);
 
   useEffect(() => {
     const map = mapRef.current;

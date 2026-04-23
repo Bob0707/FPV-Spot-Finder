@@ -24,7 +24,18 @@ export function featureContainsPoint(feature, [px, py]) {
   return false;
 }
 
-export function computeFlyCheck(spot, airspaceFeatures, naturschutzFeatures) {
+// DFS-veröffentlichte UAS-Geozonen aus dipul.de — semantische zoneType-Werte
+// aus lib/geozones.js. Unbekannte Typen werden ignoriert (info/FIR/UIR etc.
+// sollten vom Filter schon draussen sein, sind hier safety net).
+const GEOZONE_RULES = {
+  prohibited: { level: "red",    code: "UAS-P", label: "UAS-Flugverbotszone",  msg: "Drohnenflug in dieser Zone laut dipul.de nicht gestattet" },
+  restricted: { level: "red",    code: "UAS-R", label: "UAS-Beschränkung",    msg: "Drohnenflug nur mit Genehmigung — Bedingungen auf dipul.de prüfen" },
+  danger:     { level: "yellow", code: "UAS-D", label: "UAS-Gefahrengebiet",  msg: "Gefährdungszone — besondere Vorsicht und Rücksprache empfohlen" },
+  REA:        { level: "yellow", code: "REA",   label: "Modellflug-Zone",     msg: "Ausnahmezone für Modellflug — Abstimmung mit Betreiber nötig" },
+  nature:     { level: "yellow", code: "NSG",   label: "Naturschutz (DFS)",   msg: "Naturschutz-Einschränkung für UAS — Flug meist verboten/genehmigungspflichtig" },
+};
+
+export function computeFlyCheck(spot, airspaceFeatures, naturschutzFeatures, geoZoneFeatures) {
   const pt = spot.geometry.coordinates;
   const hits = [];
 
@@ -53,6 +64,25 @@ export function computeFlyCheck(spot, airspaceFeatures, naturschutzFeatures) {
       label: rule.label,
       name: f.properties.name,
       msg: rule.msg,
+    });
+  }
+
+  for (const f of geoZoneFeatures || []) {
+    if (!featureContainsPoint(f, pt)) continue;
+    const rule = GEOZONE_RULES[f.properties?.zoneType];
+    if (!rule) continue;
+    const p = f.properties;
+    // formatAltLimit im Panel erwartet {value, unit, referenceDatum} — wir
+    // packen die Meter-Werte aus geozones.js in dieses Schema.
+    const toLimit = (m) => (m == null ? null : { value: Math.round(m), unit: "M", referenceDatum: "GND" });
+    hits.push({
+      level: rule.level,
+      code: rule.code,
+      label: rule.label,
+      name: p.name || rule.label,
+      msg: rule.msg,
+      lowerLimit: toLimit(p.lowerLimitM),
+      upperLimit: toLimit(p.upperLimitM),
     });
   }
 

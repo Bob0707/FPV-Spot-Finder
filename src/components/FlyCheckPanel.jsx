@@ -11,9 +11,10 @@ export default function FlyCheckPanel({
   flyCheckResult,
   airspaceLoaded,
   naturschutzLoaded,
+  geoZonesLoaded,
 }) {
   const [showRules, setShowRules] = useState(false);
-  const dataLoaded = airspaceLoaded || naturschutzLoaded;
+  const dataLoaded = airspaceLoaded || naturschutzLoaded || geoZonesLoaded;
 
   if (!selectedSpot) {
     return (
