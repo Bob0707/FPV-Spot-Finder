@@ -28,7 +28,7 @@ export function haversineDistance(p1, p2) {
 // ── Tunables ───────────────────────────────────────────────────────────────
 const CELL_M = 80;              // raster cell size in meters
 const DILATE_M = 180;           // each building activates cells within this radius
-const MIN_POINTS = 10;          // drop clusters with fewer buildings (rural noise)
+const MIN_POINTS = 3;           // drop clusters with fewer buildings (isolated-farm noise)
 const SMOOTH_ITER = 2;          // Chaikin passes — softens rectilinear stairsteps
 const MAX_GRID_CELLS = 4_000_000; // safety cap; auto-coarsen CELL_M if exceeded
 
@@ -98,9 +98,11 @@ function rasterize(xy) {
 }
 
 // ── Flood-fill 4-connected components of the urban mask ───────────────────
-// 4-connectivity keeps each component simply-connected: the rectilinear
-// boundary walk later in traceBoundary has no checkerboard pinch-points to
-// disambiguate, so every corner has exactly one outgoing boundary edge.
+// 4-connectivity pairs naturally with 8-connected background (holes): two
+// diagonally-touching empty cells inside a component are treated as separate
+// holes. That is what we want for rendering (each hole is its own unfilled
+// region), but it means boundary walks can hit saddle corners where two
+// hole rings share a single pinch point — traceBoundary handles that.
 function findComponents(urban, cols, rows) {
   const labels = new Int32Array(cols * rows);
   const components = [];
@@ -161,10 +163,19 @@ function traceBoundary(cells, cols, rows) {
     if (!has(i, j - 1)) edges.push([i,     j,     i + 1, j    ]); // bottom W→E
   }
 
-  // In a 4-connected component every corner has at most one outgoing edge,
-  // so chaining by corner-key is deterministic.
+  // Most corners have exactly one outgoing edge, but at a saddle — two
+  // diagonally-touching single-cell holes meeting at one corner — there are
+  // two. Store a list per corner so no edge is silently overwritten; walk
+  // resolves saddles by picking the sharpest right turn from the incoming
+  // direction, which preserves "urban on left" and keeps each hole ring
+  // intact.
+  const KEY = 100003;
   const outMap = new Map();
-  for (const e of edges) outMap.set(e[0] * 100003 + e[1], e);
+  for (const e of edges) {
+    const key = e[0] * KEY + e[1];
+    const list = outMap.get(key);
+    if (list) list.push(e); else outMap.set(key, [e]);
+  }
 
   const rings = [];
   const used = new Set();
@@ -175,7 +186,24 @@ function traceBoundary(cells, cols, rows) {
     while (cur && !used.has(cur)) {
       used.add(cur);
       ring.push([cur[0], cur[1]]);
-      cur = outMap.get(cur[2] * 100003 + cur[3]);
+      const options = outMap.get(cur[2] * KEY + cur[3]);
+      if (!options) { cur = null; break; }
+      if (options.length === 1) {
+        cur = options[0];
+      } else {
+        const inDx = cur[2] - cur[0];
+        const inDy = cur[3] - cur[1];
+        let best = null;
+        let bestCross = Infinity; // minimise => sharpest right turn
+        for (const cand of options) {
+          if (used.has(cand)) continue;
+          const odx = cand[2] - cand[0];
+          const ody = cand[3] - cand[1];
+          const cross = inDx * ody - inDy * odx;
+          if (cross < bestCross) { bestCross = cross; best = cand; }
+        }
+        cur = best;
+      }
     }
     if (ring.length < 3) continue;
 
