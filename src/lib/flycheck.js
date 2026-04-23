@@ -35,11 +35,6 @@ function classifyDipulHit(hit) {
     return null;
   }
 
-  // Beim ersten Treffer Felder loggen — wichtig um den echten WMS-Aufbau zu kennen
-  if (Object.keys(props).length > 0) {
-    console.log("[flycheck] dipul props:", layer, props);
-  }
-
   const name =
     props.name || props.NAME ||
     props.bezeichnung || props.BEZEICHNUNG ||

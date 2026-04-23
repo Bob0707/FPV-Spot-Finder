@@ -325,6 +325,11 @@ export function MapView({
     );
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 150 }), "bottom-left");
 
+    map.on("error", (e) => {
+      if (e?.error?.name === "InvalidStateError") return;
+      console.error("[map]", e?.error ?? e);
+    });
+
     map.on("load", () => {
       setLoaded(true);
       onMapReady?.(map);

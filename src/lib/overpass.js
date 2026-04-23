@@ -129,7 +129,7 @@ export async function tryFetch(url, query, parentSignal, timeoutMs = 30000) {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       signal: combined,
     });
-    if (res.status === 429) throw new Error("HTTP 429");
+    if (res.status === 429) { const e = new Error("HTTP 429"); e.retryable = true; throw e; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const remark = data.remark ?? "";
