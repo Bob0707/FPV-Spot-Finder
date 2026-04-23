@@ -121,14 +121,15 @@ export function buildGetMapUrl({
     layers,
     styles: "",
     crs: srs,
-    bbox: bboxParam,
     width: String(width),
     height: String(height),
     format,
     transparent: transparent ? "TRUE" : "FALSE",
   });
 
-  return `${WMS_BASE}?${params.toString()}`;
+  // bbox must NOT go through URLSearchParams — it would encode "{bbox-epsg-3857}"
+  // to "%7Bbbox-epsg-3857%7D", which MapLibre can no longer find and replace.
+  return `${WMS_BASE}?${params.toString()}&bbox=${bboxParam}`;
 }
 
 // ── 3. GetFeatureInfo ──────────────────────────────────────────────────────
