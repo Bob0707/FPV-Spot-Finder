@@ -10,6 +10,23 @@ function layerDotColor(name) {
   return "#94a3b8";
 }
 
+const presetButtonStyle = {
+  flex: 1,
+  fontSize: 10,
+  padding: "4px 6px",
+  background: "var(--bg-card)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-sm)",
+  color: "var(--text-secondary)",
+  cursor: "pointer",
+};
+
+const externalLinkStyle = {
+  color: "var(--info)",
+  textDecoration: "none",
+  whiteSpace: "nowrap",
+};
+
 function LayerGroup({ title, groupColor, layers, active, onToggle }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -171,34 +188,10 @@ export function GeoZonesPanel({
       {wmsAvailable === true && layers.length > 0 && (
         <>
           <div style={{ display: "flex", gap: 5 }}>
-            <button
-              onClick={() => onLayersChange(relevantNames)}
-              style={{
-                flex: 1,
-                fontSize: 10,
-                padding: "4px 6px",
-                background: "var(--bg-card)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-sm)",
-                color: "var(--text-secondary)",
-                cursor: "pointer",
-              }}
-            >
+            <button onClick={() => onLayersChange(relevantNames)} style={presetButtonStyle}>
               Alle relevanten
             </button>
-            <button
-              onClick={() => onLayersChange(layers.map((l) => l.name))}
-              style={{
-                flex: 1,
-                fontSize: 10,
-                padding: "4px 6px",
-                background: "var(--bg-card)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-sm)",
-                color: "var(--text-secondary)",
-                cursor: "pointer",
-              }}
-            >
+            <button onClick={() => onLayersChange(layers.map((l) => l.name))} style={presetButtonStyle}>
               Alle
             </button>
           </div>
@@ -225,36 +218,41 @@ export function GeoZonesPanel({
       )}
 
       {/* ── Transparenz-Slider ── */}
-      {wmsAvailable === true && (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 0" }}>
-          <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>Transparenz</span>
-          <input
-            type="range"
-            min={0.2}
-            max={0.8}
-            step={0.05}
-            value={opacity ?? 0.5}
-            onChange={(e) => onOpacityChange(parseFloat(e.target.value))}
-            style={{ flex: 1, accentColor: "var(--accent)" }}
-          />
-          <span style={{ fontSize: 11, color: "var(--text-muted)", width: 32, textAlign: "right" }}>
-            {Math.round((opacity ?? 0.5) * 100)}%
-          </span>
-        </div>
-      )}
+      {wmsAvailable === true && (() => {
+        const op = opacity ?? 0.5;
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 0" }}>
+            <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>Transparenz</span>
+            <input
+              type="range"
+              min={0.2}
+              max={0.8}
+              step={0.05}
+              value={op}
+              onChange={(e) => onOpacityChange(parseFloat(e.target.value))}
+              style={{ flex: 1, accentColor: "var(--accent)" }}
+            />
+            <span style={{ fontSize: 11, color: "var(--text-muted)", width: 32, textAlign: "right" }}>
+              {Math.round(op * 100)}%
+            </span>
+          </div>
+        );
+      })()}
 
       {/* ── Fallback (nur wenn CORS blockiert) ── */}
       {corsBlocked && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <div className="az-error" style={{ alignItems: "flex-start", lineHeight: 1.5 }}>
-            <IconWarning style={{ flexShrink: 0, marginTop: 1 }} />
+            <span style={{ flexShrink: 0, marginTop: 1, display: "inline-flex" }}>
+              <IconWarning />
+            </span>
             <span>
               Der WMS-Dienst ist nicht direkt erreichbar.{" "}
               <a
                 href="https://maptool-dipul.dfs.de"
                 target="_blank"
                 rel="noreferrer"
-                style={{ color: "var(--info)", textDecoration: "none", whiteSpace: "nowrap" }}
+                style={externalLinkStyle}
               >
                 Zonen auf dipul.de ansehen <IconExternal />
               </a>
@@ -322,7 +320,7 @@ export function GeoZonesPanel({
             href="https://www.dipul.de"
             target="_blank"
             rel="noreferrer"
-            style={{ color: "var(--info)", textDecoration: "none", whiteSpace: "nowrap" }}
+            style={externalLinkStyle}
           >
             dipul.de <IconExternal />
           </a>
