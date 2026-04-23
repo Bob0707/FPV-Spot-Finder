@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import { IconInfo, IconWarning, IconSpinner, IconCloud, IconExternal } from "./Icons.jsx";
 import { DIPUL_LAYERS } from "../lib/dipulWms.js";
 
@@ -112,13 +112,13 @@ export function GeoZonesPanel({
   loadingGeoZones,
   geoZoneError,
 }) {
-  const fileInputRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
 
   const layers = availableLayers || [];
   const active = activeLayers || [];
   const fallbackCount = (geoZoneFeatures || []).length;
   const corsBlocked = wmsAvailable === false;
+  const op = opacity ?? 0.5;
 
   const toggleLayer = (name) =>
     onLayersChange(
@@ -188,7 +188,11 @@ export function GeoZonesPanel({
       {wmsAvailable === true && layers.length > 0 && (
         <>
           <div style={{ display: "flex", gap: 5 }}>
-            <button onClick={() => onLayersChange(relevantNames)} style={presetButtonStyle}>
+            <button
+              onClick={() => onLayersChange(relevantNames)}
+              disabled={relevantNames.length === 0}
+              style={{ ...presetButtonStyle, opacity: relevantNames.length === 0 ? 0.5 : 1 }}
+            >
               Alle relevanten
             </button>
             <button onClick={() => onLayersChange(layers.map((l) => l.name))} style={presetButtonStyle}>
@@ -218,40 +222,36 @@ export function GeoZonesPanel({
       )}
 
       {/* ── Transparenz-Slider ── */}
-      {wmsAvailable === true && (() => {
-        const op = opacity ?? 0.5;
-        return (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 0" }}>
-            <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>Transparenz</span>
-            <input
-              type="range"
-              min={0.2}
-              max={0.8}
-              step={0.05}
-              value={op}
-              onChange={(e) => onOpacityChange(parseFloat(e.target.value))}
-              style={{ flex: 1, accentColor: "var(--accent)" }}
-            />
-            <span style={{ fontSize: 11, color: "var(--text-muted)", width: 32, textAlign: "right" }}>
-              {Math.round(op * 100)}%
-            </span>
-          </div>
-        );
-      })()}
+      {wmsAvailable === true && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 0" }}>
+          <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>Transparenz</span>
+          {/* 0.2–0.8: Zonen bleiben sichtbar, verdecken Basiskarte aber nie ganz */}
+          <input
+            type="range"
+            min={0.2}
+            max={0.8}
+            step={0.05}
+            value={op}
+            onChange={(e) => onOpacityChange(parseFloat(e.target.value))}
+            style={{ flex: 1, accentColor: "var(--accent)" }}
+          />
+          <span style={{ fontSize: 11, color: "var(--text-muted)", width: 32, textAlign: "right" }}>
+            {Math.round(op * 100)}%
+          </span>
+        </div>
+      )}
 
       {/* ── Fallback (nur wenn CORS blockiert) ── */}
       {corsBlocked && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <div className="az-error" style={{ alignItems: "flex-start", lineHeight: 1.5 }}>
-            <span style={{ flexShrink: 0, marginTop: 1, display: "inline-flex" }}>
-              <IconWarning />
-            </span>
+            <IconWarning style={{ flexShrink: 0, marginTop: 1 }} />
             <span>
               Der WMS-Dienst ist nicht direkt erreichbar.{" "}
               <a
                 href="https://maptool-dipul.dfs.de"
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 style={externalLinkStyle}
               >
                 Zonen auf dipul.de ansehen <IconExternal />
@@ -278,7 +278,6 @@ export function GeoZonesPanel({
             }}
           >
             <input
-              ref={fileInputRef}
               type="file"
               accept=".kml,application/vnd.google-earth.kml+xml,application/xml,text/xml"
               style={{ display: "none" }}
@@ -319,7 +318,7 @@ export function GeoZonesPanel({
           <a
             href="https://www.dipul.de"
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             style={externalLinkStyle}
           >
             dipul.de <IconExternal />
