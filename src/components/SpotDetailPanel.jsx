@@ -8,7 +8,7 @@ export function SpotDetailPanel({ spot, onClose, flyCheckResult, onToast }) {
 
   if (!spot) return null;
 
-  const { spotType, name, tags, id, osmType, score, fpvScore, fpvBreakdown } = spot.properties;
+  const { spotType, name, tags, id, osmType, score, fpvScore, fpvBreakdown, buildingScore, nearestClusterDistanceM } = spot.properties;
   const [lng, lat] = spot.geometry.coordinates;
   const type = SPOT_TYPES.find((st) => st.id === spotType);
 
@@ -32,10 +32,11 @@ export function SpotDetailPanel({ spot, onClose, flyCheckResult, onToast }) {
   if (tags?.["leisure"]) tagH.push({ label: "Freizeitanlage", value: tags.leisure });
 
   const breakdown = [
-    { label: "Abgelegen", value: fpvBreakdown?.remote ?? score ?? 50, icon: "📍", desc: "Remoteness" },
-    { label: "Spot-Typ",  value: fpvBreakdown?.typeAppeal ?? 65,       icon: type?.icon ?? "🗺", desc: "FPV-Eignung" },
-    { label: "Interesse", value: fpvBreakdown?.visual ?? 55,           icon: "🏗", desc: "Visuell" },
-    { label: "Zugang",    value: fpvBreakdown?.access ?? 65,           icon: "🔓", desc: "Erreichbarkeit" },
+    { label: "Abgelegen", value: fpvBreakdown?.remote ?? score ?? 50, icon: "📍" },
+    { label: "Spot-Typ",  value: fpvBreakdown?.typeAppeal ?? 65,       icon: type?.icon ?? "🗺" },
+    { label: "Interesse", value: fpvBreakdown?.visual ?? 55,           icon: "🏗" },
+    { label: "Zugang",    value: fpvBreakdown?.access ?? 65,           icon: "🔓" },
+    { label: "Bebauung",  value: buildingScore ?? null,                icon: "🏘", distM: nearestClusterDistanceM ?? null },
   ];
 
   const handleCopyCoords = () => {
@@ -109,14 +110,25 @@ export function SpotDetailPanel({ spot, onClose, flyCheckResult, onToast }) {
               <div className="sdp-fpv-tick" style={{ left: "75%" }} />
             </div>
             <div className="sdp-fpv-breakdown">
-              {breakdown.map(({ label, value, icon }) => (
-                <div key={label} className="sdp-fpv-sub">
-                  <span className="sdp-fpv-sub-icon">{icon}</span>
-                  <span className="sdp-fpv-sub-label">{label}</span>
-                  <div className="sdp-fpv-sub-track">
-                    <div className="sdp-fpv-sub-fill" style={{ width: `${value}%`, background: fpvColor }} />
+              {breakdown.map(({ label, value, icon, distM }) => (
+                <div key={label}>
+                  <div className="sdp-fpv-sub">
+                    <span className="sdp-fpv-sub-icon">{icon}</span>
+                    <span className="sdp-fpv-sub-label">{label}</span>
+                    {value != null ? (
+                      <div className="sdp-fpv-sub-track">
+                        <div className="sdp-fpv-sub-fill" style={{ width: `${value}%`, background: fpvColor }} />
+                      </div>
+                    ) : (
+                      <div style={{ flex: 1 }} />
+                    )}
+                    <span className="sdp-fpv-sub-val">{value != null ? value : "—"}</span>
                   </div>
-                  <span className="sdp-fpv-sub-val">{value}</span>
+                  {distM != null && (
+                    <div style={{ paddingLeft: 86, fontSize: 9, color: "var(--text-muted)", marginTop: 1, lineHeight: 1 }}>
+                      ↔ {distM >= 1000 ? `${(distM / 1000).toFixed(1)} km` : `${distM} m`} zum nächsten Wohngebiet
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

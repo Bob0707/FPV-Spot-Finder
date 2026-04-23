@@ -5,6 +5,7 @@ import { zoneColorExpr } from "../lib/airspace.js";
 import { readUrlParams, makeDonutGeoJSON, makeCircleGeoJSON, zoomForRadius } from "../lib/helpers.js";
 import { DACH_CENTER, DACH_ZOOM } from "../lib/constants.js";
 import { IconDrone } from "./Icons.jsx";
+import { buildGetMapUrl } from "../lib/dipulWms.js";
 
 // ── Convert clusters → GeoJSON FeatureCollection of hull polygons ───────────
 // Each cluster's `hull` is an array of rings (disjoint CCW loops). Emitting
@@ -51,8 +52,9 @@ export function MapView({
   onZoneClick,
   buildingClusters,
   showBuildingZones,
-  geoZoneFeatures,
   showGeoZones,
+  activeDipulLayers,
+  geoZoneOpacity,
 }) {
   const [loaded, setLoaded] = useState(false);
   const initDone = useRef(false);
@@ -164,30 +166,32 @@ export function MapView({
       paint: { "line-color": colorExpr, "line-width": 2.2, "line-opacity": 0.95 },
     });
 
-    // UAS-Geozonen (dipul.de KML-Upload) — Farbe je nach semantischem zoneType
-    sources["geozones-data"] = { type: "geojson", data: { type: "FeatureCollection", features: [] } };
-    const geozoneColorExpr = [
-      "match", ["get", "zoneType"],
-      "prohibited", "#ef4444",
-      "restricted", "#f59e0b",
-      "danger",     "#f97316",
-      "REA",        "#60a5fa",
-      "nature",     "#22d3a7",
-      "#94a3b8",
-    ];
+    // UAS-Geozonen (dipul WMS-Raster-Tiles)
+    const dipulActiveLayers = (activeDipulLayers && activeDipulLayers.length > 0)
+      ? activeDipulLayers
+      : ["dipul:kontrollzonen"];
+    sources["dipul-wms"] = {
+      type: "raster",
+      tiles: [
+        buildGetMapUrl({
+          bbox: "{bbox-epsg-3857}",
+          width: 256,
+          height: 256,
+          layers: dipulActiveLayers.join(","),
+          srs: "EPSG:3857",
+          format: "image/png",
+          transparent: true,
+        }),
+      ],
+      tileSize: 256,
+      attribution: "Quelle Geodaten: <a href='https://www.dipul.de'>DFS, BKG 2026</a>",
+    };
     layers.push({
-      id: "geozones-fill",
-      type: "fill",
-      source: "geozones-data",
+      id: "dipul-zones",
+      type: "raster",
+      source: "dipul-wms",
       layout: { visibility: "none" },
-      paint: { "fill-color": geozoneColorExpr, "fill-opacity": 0.18 },
-    });
-    layers.push({
-      id: "geozones-outline",
-      type: "line",
-      source: "geozones-data",
-      layout: { visibility: "none" },
-      paint: { "line-color": geozoneColorExpr, "line-width": 1.8, "line-opacity": 0.85, "line-dasharray": [2, 2] },
+      paint: { "raster-opacity": 0.5 },
     });
 
     // Building clusters
@@ -470,21 +474,67 @@ export function MapView({
     });
   }, [showNaturschutz, loaded]);
 
+  // Visibility-Toggle für den WMS-Raster-Layer
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loaded) return;
-    map.getSource("geozones-data")?.setData({ type: "FeatureCollection", features: geoZoneFeatures || [] });
-  }, [geoZoneFeatures, loaded]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !loaded) return;
-    ["geozones-fill", "geozones-outline"].forEach((id) => {
-      if (map.getLayer(id)) {
-        map.setLayoutProperty(id, "visibility", showGeoZones ? "visible" : "none");
-      }
-    });
+    if (map.getLayer("dipul-zones")) {
+      map.setLayoutProperty("dipul-zones", "visibility", showGeoZones ? "visible" : "none");
+    }
   }, [showGeoZones, loaded]);
+
+  // Deckkraft des WMS-Layers
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded) return;
+    if (map.getLayer("dipul-zones")) {
+      map.setPaintProperty("dipul-zones", "raster-opacity", geoZoneOpacity ?? 0.5);
+    }
+  }, [geoZoneOpacity, loaded]);
+
+  // Layer-Auswahl geändert → Source mit neuer URL neu aufbauen
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded) return;
+    if (!activeDipulLayers || activeDipulLayers.length === 0) return;
+
+    const newTileUrl = buildGetMapUrl({
+      bbox: "{bbox-epsg-3857}",
+      width: 256,
+      height: 256,
+      layers: activeDipulLayers.join(","),
+      srs: "EPSG:3857",
+      format: "image/png",
+      transparent: true,
+    });
+
+    const wasVisible = map.getLayer("dipul-zones")
+      ? map.getLayoutProperty("dipul-zones", "visibility") !== "none"
+      : false;
+
+    if (map.getLayer("dipul-zones")) map.removeLayer("dipul-zones");
+    if (map.getSource("dipul-wms")) map.removeSource("dipul-wms");
+
+    // WMS soll unterhalb der Gebäude-/Spot-Layer liegen
+    const anchorId = map.getLayer("building-clusters-fill") ? "building-clusters-fill" : undefined;
+
+    map.addSource("dipul-wms", {
+      type: "raster",
+      tiles: [newTileUrl],
+      tileSize: 256,
+      attribution: "Quelle Geodaten: <a href='https://www.dipul.de'>DFS, BKG 2026</a>",
+    });
+    map.addLayer(
+      {
+        id: "dipul-zones",
+        type: "raster",
+        source: "dipul-wms",
+        layout: { visibility: wasVisible ? "visible" : "none" },
+        paint: { "raster-opacity": geoZoneOpacity ?? 0.5 },
+      },
+      anchorId
+    );
+  }, [activeDipulLayers, loaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const map = mapRef.current;

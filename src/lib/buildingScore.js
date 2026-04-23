@@ -49,7 +49,7 @@ export function computeBuildingDistanceScore(spotCoords, clusters) {
 // break early once the remaining clusters are definitely farther than minDist.
 export function computeBuildingDistanceScoreBatch(spots, clusters) {
   if (spots.length === 0) return [];
-  if (clusters.length === 0) return spots.map(() => 100);
+  if (clusters.length === 0) return spots.map(() => ({ score: 100, distM: null }));
 
   // Build a flat sorted array of cluster centroids for early-exit sweeping.
   // Sort by latitude — for each spot we sweep outward in lat and stop when the
@@ -106,7 +106,10 @@ export function computeBuildingDistanceScoreBatch(spots, clusters) {
       if (minDist === 0) break;
     }
 
-    scores[si] = interpolateScore(minDist);
+    scores[si] = {
+      score: Math.round(interpolateScore(minDist)),
+      distM: minDist < Infinity ? Math.round(minDist) : null,
+    };
   }
 
   return scores;

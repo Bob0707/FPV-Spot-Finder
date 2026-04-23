@@ -1,65 +1,114 @@
-import React, { useRef, useState, useMemo } from "react";
-import {
-  IconInfo,
-  IconWarning,
-  IconSpinner,
-  IconRefresh,
-  IconExternal,
-  IconCloud,
-} from "./Icons.jsx";
+import React, { useRef, useState } from "react";
+import { IconInfo, IconWarning, IconSpinner, IconCloud, IconExternal } from "./Icons.jsx";
+import { DIPUL_LAYERS } from "../lib/dipulWms.js";
 
-// Colour + label per semantic zoneType — matches the classifier in
-// lib/geozones.js. Anything not in this table falls back to the muted default.
-const ZONE_META = {
-  prohibited: { color: "#ef4444", label: "Flugverbot" },
-  restricted: { color: "#f59e0b", label: "Beschränkt" },
-  danger:     { color: "#f97316", label: "Gefahr" },
-  REA:        { color: "#60a5fa", label: "REA" },
-  nature:     { color: "#22d3a7", label: "Naturschutz" },
-};
-
-function formatAlt(m) {
-  if (m == null) return null;
-  if (m <= 0) return "GND";
-  return `${Math.round(m)} m`;
+function layerDotColor(name) {
+  if (name.includes("kontroll")) return "#ef4444";
+  if (name.includes("beschraenkung") || name.includes("beschränkung")) return "#f97316";
+  if (name.includes("naturschutz")) return "#22d3a7";
+  if (name.includes("landesrecht")) return "#8b5cf6";
+  return "#94a3b8";
 }
 
-function ZoneBadge({ zoneType }) {
-  const meta = ZONE_META[zoneType] || { color: "#94a3b8", label: zoneType || "?" };
+function LayerGroup({ title, groupColor, layers, active, onToggle }) {
   return (
-    <span
-      className="az-stat-chip"
-      style={{
-        color: meta.color,
-        borderColor: meta.color + "55",
-        background: meta.color + "18",
-      }}
-    >
-      {meta.label}
-    </span>
+    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      <div
+        style={{
+          fontSize: 9,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: ".5px",
+          color: groupColor,
+          paddingLeft: 2,
+        }}
+      >
+        {title}
+      </div>
+      {layers.map((l) => {
+        const isActive = active.includes(l.name);
+        const dot = layerDotColor(l.name);
+        return (
+          <label
+            key={l.name}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "5px 8px",
+              background: "var(--bg-card)",
+              border: `1px solid ${isActive ? groupColor + "55" : "var(--border)"}`,
+              borderRadius: "var(--radius-sm)",
+              cursor: "pointer",
+              fontSize: 11,
+              transition: "border-color .15s",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={isActive}
+              onChange={() => onToggle(l.name)}
+              style={{ accentColor: groupColor, cursor: "pointer", flexShrink: 0 }}
+            />
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: dot,
+                flexShrink: 0,
+                opacity: isActive ? 1 : 0.3,
+              }}
+            />
+            <div
+              style={{
+                fontWeight: isActive ? 600 : 400,
+                color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                flex: 1,
+                minWidth: 0,
+              }}
+              title={l.title || l.name}
+            >
+              {l.title || l.name}
+            </div>
+          </label>
+        );
+      })}
+    </div>
   );
 }
 
 export function GeoZonesPanel({
+  wmsAvailable,
+  availableLayers,
+  activeLayers,
+  onLayersChange,
+  showGeoZones,
+  onShowGeoZonesToggle,
+  opacity,
+  onOpacityChange,
+  onLoadFile,
   geoZoneFeatures,
   loadingGeoZones,
   geoZoneError,
-  showGeoZones,
-  onShowGeoZonesToggle,
-  onLoadFile,
-  filterRelevantOnly,
-  onFilterToggle,
 }) {
   const fileInputRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
 
-  const features = geoZoneFeatures || [];
-  const hasZones = features.length > 0;
+  const layers = availableLayers || [];
+  const active = activeLayers || [];
+  const fallbackCount = (geoZoneFeatures || []).length;
+  const corsBlocked = wmsAvailable === false;
 
-  const handleFile = (file) => {
-    if (!file) return;
-    onLoadFile(file);
-  };
+  const toggleLayer = (name) =>
+    onLayersChange(
+      active.includes(name) ? active.filter((n) => n !== name) : [...active, name]
+    );
+
+  const handleFile = (file) => { if (file) onLoadFile(file); };
 
   const handleDrop = (e) => {
     e.preventDefault();
@@ -67,31 +116,37 @@ export function GeoZonesPanel({
     handleFile(e.dataTransfer?.files?.[0]);
   };
 
-  const typeCounts = useMemo(() => {
-    const c = {};
-    features.forEach((f) => {
-      const t = f.properties?.zoneType || "other";
-      c[t] = (c[t] || 0) + 1;
-    });
-    return c;
-  }, [features]);
+  const restrictionLayers = layers.filter((l) => !DIPUL_LAYERS.irrelevant.includes(l.name));
+  const infoLayers = layers.filter((l) => DIPUL_LAYERS.irrelevant.includes(l.name));
+
+  const relevantNames = layers
+    .filter((l) => DIPUL_LAYERS.relevant.includes(l.name))
+    .map((l) => l.name);
 
   return (
     <div className="airspace-panel">
-      {/* Map-toggle */}
+      {/* ── Header-Zeile ── */}
       <div className="airspace-toggle-row">
         <div className="airspace-toggle-left">
-          <span className="airspace-toggle-icon">🚫</span>
+          <span className="airspace-toggle-icon">🗺</span>
           <div className="airspace-toggle-info">
-            <span className="airspace-toggle-name">UAS-Geozonen</span>
-            <span className="airspace-toggle-desc">dipul.de · Flugverbote · Beschränkungen</span>
+            <span className="airspace-toggle-name">UAS-Geozonen (dipul)</span>
+            <span className="airspace-toggle-desc">Flugverbote · Beschränkungen · WMS</span>
           </div>
-          {hasZones && !loadingGeoZones && (
+          {wmsAvailable === true && (
             <span
               className="az-count-badge"
-              style={{ background: "#ef444418", color: "#ef4444", borderColor: "#ef444440" }}
+              style={{ background: "#22d3a718", color: "#22d3a7", borderColor: "#22d3a740" }}
             >
-              {features.length}
+              Live
+            </span>
+          )}
+          {corsBlocked && (
+            <span
+              className="az-count-badge"
+              style={{ background: "#6b728018", color: "#94a3b8", borderColor: "#6b728040" }}
+            >
+              Offline
             </span>
           )}
         </div>
@@ -99,181 +154,177 @@ export function GeoZonesPanel({
           className={`overlay-toggle ${showGeoZones ? "active" : ""}`}
           style={{ "--toggle-color": "#ef4444" }}
           onClick={onShowGeoZonesToggle}
-          disabled={!hasZones}
-          title={hasZones ? "" : "Zuerst KML hochladen"}
+          disabled={wmsAvailable !== true && fallbackCount === 0}
+          title={wmsAvailable !== true && fallbackCount === 0 ? "WMS nicht verfügbar" : ""}
         />
       </div>
 
-      {/* Status */}
-      <div className="airspace-status-block">
-        {loadingGeoZones && (
-          <div className="az-loading"><IconSpinner /> GeoZonen werden geladen…</div>
-        )}
-        {!loadingGeoZones && geoZoneError && (
-          <div className="az-error"><IconWarning /> {geoZoneError}</div>
-        )}
-        {!loadingGeoZones && !geoZoneError && !hasZones && (
-          <div className="az-hint">Keine GeoZonen geladen</div>
-        )}
-        {!loadingGeoZones && !geoZoneError && hasZones && (
-          <div className="az-stats-row" style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {Object.entries(typeCounts).map(([t, n]) => {
-              const meta = ZONE_META[t] || { color: "#94a3b8", label: t };
-              return (
-                <div
-                  key={t}
-                  className="az-stat-chip"
-                  style={{
-                    color: meta.color,
-                    borderColor: meta.color + "55",
-                    background: meta.color + "18",
-                  }}
-                >
-                  <span>{meta.label}</span>
-                  <span>{n}</span>
-                </div>
-              );
-            })}
+      {/* ── Lade-Status ── */}
+      {wmsAvailable === null && (
+        <div className="az-loading"><IconSpinner /> Verbinde mit dipul WMS…</div>
+      )}
+      {wmsAvailable === true && layers.length === 0 && (
+        <div className="az-loading"><IconSpinner /> Lade Layer…</div>
+      )}
+
+      {/* ── Layer-Liste ── */}
+      {wmsAvailable === true && layers.length > 0 && (
+        <>
+          <div style={{ display: "flex", gap: 5 }}>
+            <button
+              onClick={() => onLayersChange(relevantNames)}
+              style={{
+                flex: 1,
+                fontSize: 10,
+                padding: "4px 6px",
+                background: "var(--bg-card)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-sm)",
+                color: "var(--text-secondary)",
+                cursor: "pointer",
+              }}
+            >
+              Alle relevanten
+            </button>
+            <button
+              onClick={() => onLayersChange(layers.map((l) => l.name))}
+              style={{
+                flex: 1,
+                fontSize: 10,
+                padding: "4px 6px",
+                background: "var(--bg-card)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-sm)",
+                color: "var(--text-secondary)",
+                cursor: "pointer",
+              }}
+            >
+              Alle
+            </button>
           </div>
-        )}
-      </div>
 
-      {/* Drag&Drop + File-Upload */}
-      <label
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={handleDrop}
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 6,
-          padding: "14px 10px",
-          background: dragOver ? "var(--accent-dim)" : "var(--bg-card)",
-          border: `1px dashed ${dragOver ? "var(--accent)" : "var(--border-light)"}`,
-          borderRadius: "var(--radius-sm)",
-          cursor: "pointer",
-          transition: "all .15s",
-          textAlign: "center",
-        }}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".kml,application/vnd.google-earth.kml+xml,application/xml,text/xml"
-          style={{ display: "none" }}
-          onChange={(e) => {
-            handleFile(e.target.files?.[0]);
-            e.target.value = "";
-          }}
-        />
-        <IconCloud />
-        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>
-          KML von dipul.de hochladen
-        </div>
-        <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.4 }}>
-          Datei hier ablegen oder klicken zum Auswählen
-        </div>
-      </label>
+          {restrictionLayers.length > 0 && (
+            <LayerGroup
+              title="Flugbeschränkungen"
+              groupColor="#ef4444"
+              layers={restrictionLayers}
+              active={active}
+              onToggle={toggleLayer}
+            />
+          )}
+          {infoLayers.length > 0 && (
+            <LayerGroup
+              title="Informationsgebiete"
+              groupColor="#6b7280"
+              layers={infoLayers}
+              active={active}
+              onToggle={toggleLayer}
+            />
+          )}
+        </>
+      )}
 
-      {/* Filter-Checkbox */}
-      <label
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "8px 10px",
-          background: "var(--bg-card)",
-          border: "1px solid var(--border)",
-          borderRadius: "var(--radius-sm)",
-          cursor: "pointer",
-          fontSize: 11,
-          color: "var(--text-secondary)",
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={filterRelevantOnly}
-          onChange={(e) => onFilterToggle(e.target.checked)}
-          style={{ accentColor: "var(--accent)", cursor: "pointer" }}
-        />
-        <span style={{ flex: 1 }}>Nur UAS-relevante Zonen (≤ 120 m AGL)</span>
-      </label>
-
-      {/* Zone-Liste */}
-      {hasZones && (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 4,
-            maxHeight: 260,
-            overflowY: "auto",
-            padding: 2,
-          }}
-        >
-          {features.map((f, idx) => {
-            const p = f.properties || {};
-            const lower = formatAlt(p.lowerLimitM);
-            const upper = formatAlt(p.upperLimitM);
-            const altRange = lower && upper
-              ? `${lower} – ${upper}`
-              : lower ? `ab ${lower}`
-              : upper ? `bis ${upper}`
-              : null;
-            return (
-              <div
-                key={p.id ?? idx}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "6px 8px",
-                  background: "var(--bg-card)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-sm)",
-                  minWidth: 0,
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: "var(--text-primary)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                    title={p.name}
-                  >
-                    {p.name || "(ohne Name)"}
-                  </div>
-                  {altRange && (
-                    <div style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-                      {altRange}
-                    </div>
-                  )}
-                </div>
-                <ZoneBadge zoneType={p.zoneType} />
-              </div>
-            );
-          })}
+      {/* ── Transparenz-Slider ── */}
+      {wmsAvailable === true && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 0" }}>
+          <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>Transparenz</span>
+          <input
+            type="range"
+            min={0.2}
+            max={0.8}
+            step={0.05}
+            value={opacity ?? 0.5}
+            onChange={(e) => onOpacityChange(parseFloat(e.target.value))}
+            style={{ flex: 1, accentColor: "var(--accent)" }}
+          />
+          <span style={{ fontSize: 11, color: "var(--text-muted)", width: 32, textAlign: "right" }}>
+            {Math.round((opacity ?? 0.5) * 100)}%
+          </span>
         </div>
       )}
 
-      {/* Hinweis + Download-Link */}
+      {/* ── Fallback (nur wenn CORS blockiert) ── */}
+      {corsBlocked && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div className="az-error" style={{ alignItems: "flex-start", lineHeight: 1.5 }}>
+            <IconWarning style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>
+              Der WMS-Dienst ist nicht direkt erreichbar.{" "}
+              <a
+                href="https://maptool-dipul.dfs.de"
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: "var(--info)", textDecoration: "none", whiteSpace: "nowrap" }}
+              >
+                Zonen auf dipul.de ansehen <IconExternal />
+              </a>
+            </span>
+          </div>
+
+          <label
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 6,
+              padding: "12px 10px",
+              background: dragOver ? "var(--accent-dim)" : "var(--bg-card)",
+              border: `1px dashed ${dragOver ? "var(--accent)" : "var(--border-light)"}`,
+              borderRadius: "var(--radius-sm)",
+              cursor: "pointer",
+              transition: "all .15s",
+              textAlign: "center",
+            }}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".kml,application/vnd.google-earth.kml+xml,application/xml,text/xml"
+              style={{ display: "none" }}
+              onChange={(e) => { handleFile(e.target.files?.[0]); e.target.value = ""; }}
+            />
+            <IconCloud />
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-primary)" }}>
+              KML-Datei hochladen
+            </div>
+            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+              Von dipul.de herunterladen und hier ablegen
+            </div>
+          </label>
+
+          {(loadingGeoZones || geoZoneError || fallbackCount > 0) && (
+            <div className="airspace-status-block">
+              {loadingGeoZones && (
+                <div className="az-loading"><IconSpinner /> KML wird geladen…</div>
+              )}
+              {!loadingGeoZones && geoZoneError && (
+                <div className="az-error"><IconWarning /> {geoZoneError}</div>
+              )}
+              {!loadingGeoZones && !geoZoneError && fallbackCount > 0 && (
+                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                  {fallbackCount} Zonen aus KML geladen
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Quellenangabe ── */}
       <div className="airspace-legal-note">
         <IconInfo />
         <span>
-          Offizielle GeoZonen herunterladen:{" "}
+          Quelle Geodaten: DFS, BKG 2026 ·{" "}
           <a
-            href="https://maptool-dipul.dfs.de"
+            href="https://www.dipul.de"
             target="_blank"
             rel="noreferrer"
             style={{ color: "var(--info)", textDecoration: "none", whiteSpace: "nowrap" }}
           >
-            maptool-dipul.dfs.de <IconExternal />
+            dipul.de <IconExternal />
           </a>
         </span>
       </div>

@@ -290,12 +290,13 @@ export function applyBuildingScores(features, clusters) {
   const bScores = computeBuildingDistanceScoreBatch(spotCoords, clusters);
   return features.map((f, i) => {
     const p = f.properties;
-    const bScore = bScores[i];
+    const { score: bScore, distM } = bScores[i];
     return {
       ...f,
       properties: {
         ...p,
         buildingScore: bScore,
+        nearestClusterDistanceM: distM,
         fpvScore: blendFpvScore(p.fpvBreakdown.total, bScore, p.clcScore ?? null),
       },
     };

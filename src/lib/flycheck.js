@@ -1,4 +1,5 @@
 import { ZONE_RULES } from "./constants.js";
+import { fetchFeatureInfo } from "./dipulWms.js";
 
 // ── Phase 8: Fly-or-No-Fly Utilities ──────────────────────────────────────
 
@@ -24,22 +25,116 @@ export function featureContainsPoint(feature, [px, py]) {
   return false;
 }
 
-// DFS-veröffentlichte UAS-Geozonen aus dipul.de — semantische zoneType-Werte
-// aus lib/geozones.js. Unbekannte Typen werden ignoriert (info/FIR/UIR etc.
-// sollten vom Filter schon draussen sein, sind hier safety net).
-const GEOZONE_RULES = {
-  prohibited: { level: "red",    code: "UAS-P", label: "UAS-Flugverbotszone",  msg: "Drohnenflug in dieser Zone laut dipul.de nicht gestattet" },
-  restricted: { level: "red",    code: "UAS-R", label: "UAS-Beschränkung",    msg: "Drohnenflug nur mit Genehmigung — Bedingungen auf dipul.de prüfen" },
-  danger:     { level: "yellow", code: "UAS-D", label: "UAS-Gefahrengebiet",  msg: "Gefährdungszone — besondere Vorsicht und Rücksprache empfohlen" },
-  REA:        { level: "yellow", code: "REA",   label: "Modellflug-Zone",     msg: "Ausnahmezone für Modellflug — Abstimmung mit Betreiber nötig" },
-  nature:     { level: "yellow", code: "NSG",   label: "Naturschutz (DFS)",   msg: "Naturschutz-Einschränkung für UAS — Flug meist verboten/genehmigungspflichtig" },
-};
+// Klassifiziert einen einzelnen dipul GetFeatureInfo-Treffer.
+// Gibt null zurück für reine Informations-Layer (FIR, UIR, Info).
+function classifyDipulHit(hit) {
+  const layer = (hit.layerName || "").toLowerCase();
+  const props = hit.properties || {};
 
-export function computeFlyCheck(spot, airspaceFeatures, naturschutzFeatures, geoZoneFeatures) {
-  const pt = spot.geometry.coordinates;
+  if (layer.includes("information") || layer.includes(":fir") || layer.includes(":uir")) {
+    return null;
+  }
+
+  // Beim ersten Treffer Felder loggen — wichtig um den echten WMS-Aufbau zu kennen
+  if (Object.keys(props).length > 0) {
+    console.log("[flycheck] dipul props:", layer, props);
+  }
+
+  const name =
+    props.name || props.NAME ||
+    props.bezeichnung || props.BEZEICHNUNG ||
+    "Unbekannte Zone";
+
+  const typeRaw = (
+    props.type || props.TYPE ||
+    props.restriction || props.RESTRICTION ||
+    props.category || props.CATEGORY || ""
+  ).toLowerCase();
+
+  if (typeRaw.includes("prohibit") || typeRaw.includes("verbot") || layer.includes("verbot")) {
+    return {
+      level: "red",
+      code: "UAS-P",
+      label: "UAS-Flugverbotszone",
+      name,
+      msg: "Drohnenflug in dieser Zone laut dipul.de nicht gestattet",
+    };
+  }
+
+  if (
+    layer.includes("kontroll") ||
+    layer.includes("beschraenkung") ||
+    layer.includes("beschränkung") ||
+    typeRaw.includes("restrict") ||
+    typeRaw.includes("beschränk") ||
+    typeRaw.includes("beschraenk")
+  ) {
+    return {
+      level: "yellow",
+      code: "UAS-R",
+      label: "UAS-Beschränkung",
+      name,
+      msg: "Drohnenflug nur mit Genehmigung — Bedingungen auf dipul.de prüfen",
+    };
+  }
+
+  if (layer.includes("naturschutz")) {
+    return {
+      level: "yellow",
+      code: "NSG-D",
+      label: "Naturschutz (DFS)",
+      name,
+      msg: "Naturschutz-Einschränkung für UAS — Flug meist genehmigungspflichtig",
+    };
+  }
+
+  if (layer.includes("landesrecht")) {
+    return {
+      level: "yellow",
+      code: "LR",
+      label: "Landesrechtliche Zone",
+      name,
+      msg: "Landesrechtliche Einschränkung — lokale Regelungen prüfen",
+    };
+  }
+
+  // Unbekannter relevanter Layer → sicherheitshalber gelb
+  return {
+    level: "yellow",
+    code: "UAS",
+    label: "UAS-Zone",
+    name,
+    msg: `Einschränkung prüfen (${hit.layerName})`,
+  };
+}
+
+export async function computeFlyCheck(spot, airspaceFeatures, naturschutzFeatures, dipulConfig) {
+  const [lng, lat] = spot.geometry.coordinates;
+  const pt = [lng, lat];
   const hits = [];
+  let dipulChecked = false;
+  let geoZoneHits = [];
 
-  for (const f of airspaceFeatures) {
+  // ── 1. Offizielle Geozonen via dipul WMS (höchste Priorität) ──────────────
+  if (dipulConfig?.available && dipulConfig?.activeLayers?.length > 0) {
+    try {
+      const rawHits = await fetchFeatureInfo({ lat, lng, layers: dipulConfig.activeLayers });
+
+      for (const hit of rawHits) {
+        const classified = classifyDipulHit(hit);
+        if (classified) hits.push(classified);
+      }
+
+      geoZoneHits = rawHits;
+      dipulChecked = true;
+    } catch (err) {
+      console.warn("[flycheck] dipul GetFeatureInfo fehlgeschlagen:", err.message);
+      dipulChecked = false;
+    }
+  }
+
+  // ── 2. OpenAIP Luftraum ───────────────────────────────────────────────────
+  for (const f of airspaceFeatures || []) {
     if (!featureContainsPoint(f, pt)) continue;
     const code = f.properties.zoneType;
     const rule = ZONE_RULES[code];
@@ -55,7 +150,8 @@ export function computeFlyCheck(spot, airspaceFeatures, naturschutzFeatures, geo
     });
   }
 
-  for (const f of naturschutzFeatures) {
+  // ── 3. Naturschutzgebiete ─────────────────────────────────────────────────
+  for (const f of naturschutzFeatures || []) {
     if (!featureContainsPoint(f, pt)) continue;
     const rule = ZONE_RULES.NATURSCHUTZ;
     hits.push({
@@ -67,31 +163,27 @@ export function computeFlyCheck(spot, airspaceFeatures, naturschutzFeatures, geo
     });
   }
 
-  for (const f of geoZoneFeatures || []) {
-    if (!featureContainsPoint(f, pt)) continue;
-    const rule = GEOZONE_RULES[f.properties?.zoneType];
-    if (!rule) continue;
-    const p = f.properties;
-    // formatAltLimit im Panel erwartet {value, unit, referenceDatum} — wir
-    // packen die Meter-Werte aus geozones.js in dieses Schema.
-    const toLimit = (m) => (m == null ? null : { value: Math.round(m), unit: "M", referenceDatum: "GND" });
-    hits.push({
-      level: rule.level,
-      code: rule.code,
-      label: rule.label,
-      name: p.name || rule.label,
-      msg: rule.msg,
-      lowerLimit: toLimit(p.lowerLimitM),
-      upperLimit: toLimit(p.upperLimitM),
-    });
-  }
-
   hits.sort((a, b) => (a.level === "red" ? -1 : b.level === "red" ? 1 : 0));
+
   const verdict = hits.some((h) => h.level === "red")
     ? "red"
     : hits.some((h) => h.level === "yellow")
     ? "yellow"
     : "green";
 
-  return { verdict, hits };
+  return {
+    verdict,
+    hits,
+    geoZoneHits,
+    dipulChecked,
+    sources: {
+      dipul: dipulChecked
+        ? "✓ Geprüft"
+        : dipulConfig?.available
+        ? "✗ Fehler"
+        : "✗ Nicht verfügbar",
+      openAip: (airspaceFeatures || []).length > 0 ? "✓ Geprüft" : "✗ Nicht geladen",
+      nature: (naturschutzFeatures || []).length > 0 ? "✓ Geprüft" : "✗ Nicht geladen",
+    },
+  };
 }
